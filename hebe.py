@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Aktualna gazetka Hebe → ID, okres i promocja w pliku Excel."""
+"""Aktualna gazetka Hebe → nazwa produktu, ID, okres i promocja w Excelu."""
 from __future__ import annotations
 
 import argparse
@@ -18,6 +18,7 @@ from urllib.parse import urljoin, urlparse
 
 import pymupdf
 from playwright.async_api import async_playwright, Error as PlaywrightError
+from product_names import fetch_names, enrich_offers
 
 LOG = logging.getLogger("hebe")
 HOME = "https://www.hebe.pl/gazetka-hebe?magazine=digital"
@@ -94,6 +95,9 @@ class Offer:
     start: str | None = None
     end: str | None = None
     warnings: list[str] | None = None
+    product: str = ""
+    product_description: str = ""
+    product_url: str = ""
 
 
 def extract_lines(page) -> list[Text]:
@@ -525,9 +529,19 @@ async def collect(args, work: Path):
             download = await event.value
             pdf = work / "gazetka.pdf"
             await download.save_as(pdf)
+            products = {}
+            if not args.skip_names:
+                # Keep verification cookies separate from the embedded catalogue.
+                names_context = await browser.new_context(locale="pl-PL")
+                try:
+                    products = await fetch_names(names_context,
+                        [e["productId"] for e in hotspots],headless=args.headless)
+                finally:
+                    await names_context.close()
             metadata = {"fetched_at": datetime.now().astimezone().isoformat(),
                         "source": args.url, "viewer": settings["paperCompleteUrl"],
-                        "settings": settings, "hotspots": hotspots}
+                        "settings": settings, "hotspots": hotspots, "products": products,
+                        "names_skipped": args.skip_names}
             (work / "source.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2))
             return settings, hotspots, pdf, metadata
         finally:
@@ -543,30 +557,36 @@ def write_excel(offers: list[Offer], output: Path, source: str):
     wb = Workbook()
     ws = wb.active
     ws.title = "Promocje"
-    ws.append(["ID", "Data obowiązywania", "Promocja"])
+    ws.append(["Produkt", "ID", "Data obowiązywania", "Promocja"])
     for i, offer in enumerate(offers, 2):
-        ws.append([offer.id, offer.period, offer.promotion])
+        product_label = offer.product or "BRAK NAZWY"
+        if offer.product_description:
+            product_label += " — " + offer.product_description
+        ws.append([product_label, offer.id, offer.period, offer.promotion])
         for cell in ws[i]:
             # Date intervals and identifiers are literal labels, never Excel formulas.
             cell.data_type = "s"
             cell.alignment = Alignment(horizontal="left",vertical="center", wrap_text=True)
             cell.font = Font(name="Arial", size=11)
-        ws.cell(i, 1).number_format = "@"
-        ws.cell(i, 2).alignment = Alignment(horizontal="center",vertical="center")
+        ws.cell(i, 2).number_format = "@"
+        ws.cell(i, 3).alignment = Alignment(horizontal="center",vertical="center")
+        if offer.product_url:
+            ws.cell(i,1).hyperlink = offer.product_url
         if offer.warnings:
             for cell in ws[i]:
                 cell.fill = PatternFill("solid", fgColor="FFF2CC")
-            ws.cell(i, 3).value += "\nDO SPRAWDZENIA: " + "; ".join(offer.warnings) + f" (strona {offer.page})"
-        ws.row_dimensions[i].height = 60 if offer.warnings else (36 if len(offer.promotion)>110 else 25)
+            ws.cell(i, 4).value += "\nDO SPRAWDZENIA: " + "; ".join(offer.warnings) + f" (strona {offer.page})"
+        ws.row_dimensions[i].height = max(15*((len(product_label)+55)//56),
+            60 if offer.warnings else (36 if len(offer.promotion)>110 else 25))
     if offers:
-        table = Table(displayName="PromocjeHebe", ref=f"A1:C{len(offers)+1}")
+        table = Table(displayName="PromocjeHebe", ref=f"A1:D{len(offers)+1}")
         table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
         ws.add_table(table)
     for cell in ws[1]:
         cell.font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="9D005D")
         cell.alignment = Alignment(horizontal="center", vertical="center")
-    for col, width in {"A": 15, "B": 29, "C": 100}.items():
+    for col, width in {"A": 65, "B": 15, "C": 29, "D": 100}.items():
         ws.column_dimensions[col].width = width
     ws.row_dimensions[1].height = 27
     ws.freeze_panes = "A2"
@@ -586,6 +606,7 @@ async def main(argv=None):
     ap.add_argument("--browser-channel", default="chrome", choices=["chrome", "chromium"], help="Przeglądarka (domyślnie zainstalowany Chrome)")
     ap.add_argument("--replay", type=Path, help="Ponownie przetwórz zachowane dane z katalogu uruchomienia")
     ap.add_argument("--json-only", action="store_true", help="Pomiń eksport Excel, zachowaj dane JSON")
+    ap.add_argument("--skip-names", action="store_true", help="Pomiń pobieranie nazw produktów")
     ap.add_argument("--strict", action="store_true", help="Zwróć kod 2, jeśli dowolny wiersz wymaga sprawdzenia")
     args = ap.parse_args(argv)
     output = args.output or Path("outputs") / datetime.now().strftime("%Y%m%d-%H%M%S-%f") / "hebe.xlsx"
@@ -602,6 +623,7 @@ async def main(argv=None):
     else:
         settings, hotspots, pdf, metadata = await collect(args, work)
     offers = parse_offers(settings, hotspots, pdf)
+    enrich_offers(offers,metadata.get("products",{}),skipped=args.skip_names or metadata.get("names_skipped",False))
     report = {"source": metadata["source"], "viewer": metadata["viewer"],
               "fetched_at": metadata["fetched_at"], "catalogue": settings["name"],
               "count": len(offers), "offers": [asdict(o) for o in offers]}

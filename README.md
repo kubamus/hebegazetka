@@ -2,13 +2,14 @@
 
 Skrypt `hebe.py` przy każdym uruchomieniu znajduje aktualną gazetkę na stronie
 Hebe, pobiera jej PDF oraz identyfikatory z klikalnych ikon koszyka i tworzy
-plik `.xlsx` z trzema kolumnami:
+plik `.xlsx` z czterema kolumnami:
 
-| ID | Data obowiązywania | Promocja |
-| --- | --- | --- |
-| 740207 | 05.11.2026–13.11.2026 | Cena promocyjna: 39,99 zł |
+| Produkt | ID | Data obowiązywania | Promocja |
+| --- | --- | --- | --- |
+| &honey Melty Moist Repair — odżywka do włosów puszących się, 445 g | 740207 | 05.11.2026–13.11.2026 | Cena promocyjna: 39,99 zł |
 
-Nazwy produktów ani ich strony nie są pobierane. Daty, ceny i warunki promocji
+Nazwy i opisy wariantów są pobierane po ID ze szczegółów produktów Hebe.
+Kliknięcie nazwy w Excelu otwiera stronę produktu. Daty, ceny i warunki promocji
 pochodzą z gazetki. Skrypt nie ma wpisanego na stałe adresu konkretnego wydania,
 liczby stron, dat ani listy ID. Nie wymaga klucza API ani płatnej usługi.
 
@@ -54,6 +55,16 @@ Można wybrać inną gazetkę ze strony Hebe:
 
 Tryb `--headless` ukrywa okno, ale Hebe może go blokować.
 
+`--skip-names` pomija pobieranie nazw. Kolumna Produkt pozostaje wtedy oznaczona
+jako „BRAK NAZWY”; pozostałe dane są nadal eksportowane.
+
+Powtórzenia tego samego ID korzystają ze wspólnego wyniku pobierania, z najwyżej
+trzema równoległymi zapytaniami. Dla skróconych ID skrypt próbuje też formatu
+z zerami na początku wymaganego przez katalog Hebe. Sprawdza, czy ID w linku produktu zgadza
+się z ID z gazetki. Brak nazwy, usunięty produkt albo blokada Hebe nie usuwają
+wiersza: nazwa otrzymuje oznaczenie „BRAK NAZWY”, a przyczyna jest dopisana do
+pola „DO SPRAWDZENIA”. Nie zgaduje nazw z sąsiednich produktów w PDF.
+
 ## Rozpoznawanie i ograniczenia
 
 ID pochodzą bezpośrednio z warstwy koszyków iPaper. W Excelu są tekstem,
@@ -78,6 +89,10 @@ zachowane wydanie bez pobierania go z internetu:
 ```sh
 .venv/bin/python hebe.py --replay outputs/<data-i-czas>/hebe-dane
 ```
+
+Nazwy są zapisywane w `source.json`, dlatego odtwarzanie wydania również działa
+bez internetu. Starsze zapisane wydania, utworzone przed obsługą nazw, nie mają
+tych danych; aby je pobrać, wykonaj nowe uruchomienie online.
 
 `--strict` zwraca kod zakończenia `2`, jeśli jakiś wiersz wymaga sprawdzenia;
 Excel nadal jest zapisywany. Błąd pobierania zwraca `1`. Zwykłe zakończenie ma kod
