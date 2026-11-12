@@ -1,0 +1,887 @@
+[
+  {
+    "page": 6,
+    "width": 510.2359924316406,
+    "height": 779.5280151367188,
+    "captions": [
+      {
+        "text": "EVELINE COSMETICS Better Than Perfect Stay In Place*** długotrwały podkład zastygający 04 golden vanilla, 30 ml",
+        "box": [
+          418.1101989746094,
+          308.59771728515625,
+          475.3901062011719,
+          363.0837707519531
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "EVELINE COSMETICS Better Tubing*** tusz do rzęs, różne rodzaje, 7 ml",
+        "box": [
+          25.637001037597656,
+          329.522705078125,
+          87.31175231933594,
+          363.083740234375
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "EVELINE COSMETICS Better Than Perfect*** mgiełka utrwalająco- -pielęgnująca do makijażu, 100 ml",
+        "box": [
+          176.3148956298828,
+          329.522705078125,
+          237.98968505859375,
+          363.083740234375
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "EVELINE COSMETICS**** drobnoziarnisty mezo- -peeling oczyszczający, 75 ml",
+        "box": [
+          16.236600875854492,
+          501.89959716796875,
+          68.0387954711914,
+          535.4605712890625
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "EVELINE COSMETICS**** antyoksydacyjny mezo- -krem rozświetlający, 50 ml",
+        "box": [
+          282.7558898925781,
+          501.89959716796875,
+          335.60626220703125,
+          535.4605712890625
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "EVELINE COSMETICS**** mezo-kuracja rekonstruktor sprężystości skóry, 40 ml",
+        "box": [
+          419.7080078125,
+          509.3244934082031,
+          488.3275146484375,
+          535.4605712890625
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      }
+    ],
+    "headers": [
+      {
+        "text": "05-22.11",
+        "box": [
+          31.87179946899414,
+          19.538936614990234,
+          75.8458023071289,
+          36.29693603515625
+        ],
+        "size": 14.0,
+        "font": "MyriadPro-SemiCn",
+        "color": 16777215
+      }
+    ],
+    "validity": [
+      {
+        "text": "**Promocja obowiązuje w dniach 05-22.11.2026 lub do wyczerpania zapasów. ***Promocja obowiązuje w dniach 21.10-22.11.2026 lub do wyczerpania zapasów.",
+        "box": [
+          14.173199653625488,
+          752.813720703125,
+          335.700927734375,
+          760.5162353515625
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "****Promocja obowiązuje w dniach 28.10-22.11.2026 lub do wyczerpania zapasów.",
+        "box": [
+          14.173199653625488,
+          759.313720703125,
+          181.1959228515625,
+          767.0162353515625
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      }
+    ],
+    "conditions": [],
+    "prices": [
+      [
+        {
+          "text": "2499",
+          "box": [
+            176.31500244140625,
+            361.4951171875,
+            218.33657836914062,
+            394.95111083984375
+          ],
+          "size": 27.200000762939453,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        24.99
+      ],
+      [
+        {
+          "text": "2299",
+          "box": [
+            25.637100219726562,
+            361.4951171875,
+            67.65876007080078,
+            394.95111083984375
+          ],
+          "size": 27.200000762939453,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        22.99
+      ],
+      [
+        {
+          "text": "2889",
+          "box": [
+            418.1101989746094,
+            361.4951171875,
+            460.0032958984375,
+            394.95111083984375
+          ],
+          "size": 27.200000762939453,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        28.89
+      ],
+      [
+        {
+          "text": "989",
+          "box": [
+            16.236600875854492,
+            533.8720092773438,
+            44.094764709472656,
+            567.3280029296875
+          ],
+          "size": 27.200000762939453,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        9.89
+      ],
+      [
+        {
+          "text": "2339",
+          "box": [
+            419.7080078125,
+            533.8720092773438,
+            461.4049377441406,
+            567.3280029296875
+          ],
+          "size": 27.200000762939453,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        23.39
+      ],
+      [
+        {
+          "text": "2189",
+          "box": [
+            282.7558898925781,
+            533.8720092773438,
+            324.64898681640625,
+            567.3280029296875
+          ],
+          "size": 27.200000762939453,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        21.89
+      ]
+    ],
+    "hotspots": [
+      {
+        "desc": "",
+        "amountselection": false,
+        "pageIndex": 5,
+        "width": 0.052,
+        "productId": "000000000000751678",
+        "zindex": 0,
+        "shape": 0,
+        "extension": "svg",
+        "id": 1152858050,
+        "x": 0.803,
+        "y": 0.564,
+        "type": 13,
+        "alternativeShopImage": null,
+        "fileid": 1472941,
+        "height": 0.034,
+        "alttext": null,
+        "styleid": -1,
+        "aws": "22e90add-89b1-4c63-9b05-709b2d56085d.svg",
+        "name": "000000000000751678",
+        "packagesize": 1,
+        "customsizeunit": null,
+        "price": 0.0,
+        "category": "Automatic"
+      },
+      {
+        "desc": "",
+        "amountselection": false,
+        "pageIndex": 5,
+        "width": 0.052,
+        "productId": "000000000000759330",
+        "zindex": 0,
+        "shape": 0,
+        "extension": "svg",
+        "id": 1152858066,
+        "x": 0.206,
+        "y": 0.873,
+        "type": 13,
+        "alternativeShopImage": null,
+        "fileid": 1472941,
+        "height": 0.034,
+        "alttext": null,
+        "styleid": -1,
+        "aws": "22e90add-89b1-4c63-9b05-709b2d56085d.svg",
+        "name": "000000000000759330",
+        "packagesize": 1,
+        "customsizeunit": null,
+        "price": 0.0,
+        "category": "Automatic"
+      },
+      {
+        "desc": "",
+        "amountselection": false,
+        "pageIndex": 5,
+        "width": 0.052,
+        "productId": "000000000000759329",
+        "zindex": 0,
+        "shape": 0,
+        "extension": "svg",
+        "id": 1152858084,
+        "x": 0.521,
+        "y": 0.873,
+        "type": 13,
+        "alternativeShopImage": null,
+        "fileid": 1472941,
+        "height": 0.034,
+        "alttext": null,
+        "styleid": -1,
+        "aws": "22e90add-89b1-4c63-9b05-709b2d56085d.svg",
+        "name": "000000000000759329",
+        "packagesize": 1,
+        "customsizeunit": null,
+        "price": 0.0,
+        "category": "Automatic"
+      },
+      {
+        "desc": "",
+        "amountselection": false,
+        "pageIndex": 5,
+        "width": 0.052,
+        "productId": "000000000000765122",
+        "zindex": 0,
+        "shape": 0,
+        "extension": "svg",
+        "id": 1152858096,
+        "x": 0.495,
+        "y": 0.557,
+        "type": 13,
+        "alternativeShopImage": null,
+        "fileid": 1472941,
+        "height": 0.034,
+        "alttext": null,
+        "styleid": -1,
+        "aws": "22e90add-89b1-4c63-9b05-709b2d56085d.svg",
+        "name": "000000000000765122",
+        "packagesize": 1,
+        "customsizeunit": null,
+        "price": 0.0,
+        "category": "Automatic"
+      },
+      {
+        "desc": "",
+        "amountselection": false,
+        "pageIndex": 5,
+        "width": 0.052,
+        "productId": "000000000000759328",
+        "zindex": 0,
+        "shape": 0,
+        "extension": "svg",
+        "id": 1152858101,
+        "x": 0.777,
+        "y": 0.845,
+        "type": 13,
+        "alternativeShopImage": null,
+        "fileid": 1472941,
+        "height": 0.034,
+        "alttext": null,
+        "styleid": -1,
+        "aws": "22e90add-89b1-4c63-9b05-709b2d56085d.svg",
+        "name": "000000000000759328",
+        "packagesize": 1,
+        "customsizeunit": null,
+        "price": 0.0,
+        "category": "Automatic"
+      },
+      {
+        "desc": "",
+        "amountselection": false,
+        "pageIndex": 5,
+        "width": 0.052,
+        "productId": "000000000000765124",
+        "zindex": 0,
+        "shape": 0,
+        "extension": "svg",
+        "id": 1152858142,
+        "x": 0.257,
+        "y": 0.344,
+        "type": 13,
+        "alternativeShopImage": null,
+        "fileid": 1472941,
+        "height": 0.034,
+        "alttext": null,
+        "styleid": -1,
+        "aws": "22e90add-89b1-4c63-9b05-709b2d56085d.svg",
+        "name": "000000000000765124",
+        "packagesize": 1,
+        "customsizeunit": null,
+        "price": 0.0,
+        "category": "Automatic"
+      },
+      {
+        "desc": "",
+        "amountselection": false,
+        "pageIndex": 5,
+        "width": 0.052,
+        "productId": "000000000000765126",
+        "zindex": 0,
+        "shape": 0,
+        "extension": "svg",
+        "id": 1152858146,
+        "x": 0.077,
+        "y": 0.563,
+        "type": 13,
+        "alternativeShopImage": null,
+        "fileid": 1472941,
+        "height": 0.034,
+        "alttext": null,
+        "styleid": -1,
+        "aws": "22e90add-89b1-4c63-9b05-709b2d56085d.svg",
+        "name": "000000000000765126",
+        "packagesize": 1,
+        "customsizeunit": null,
+        "price": 0.0,
+        "category": "Automatic"
+      }
+    ],
+    "products": {
+      "751678": {
+        "name": "Eveline Cosmetics Better Than Perfect Stay In Place",
+        "description": "długotrwały podkład zastygający 04 golden vanilla, 30 ml",
+        "brand": "Eveline Cosmetics"
+      },
+      "759329": {
+        "name": "Eveline Cosmetics MesoNeedles",
+        "description": "antyoksydacyjny mezo-krem rozświetlający, 50 ml",
+        "brand": "Eveline Cosmetics"
+      },
+      "765122": {
+        "name": "Eveline Cosmetics Stay in place",
+        "description": "mgiełka utrwalająco-pielęgnująca do makijażu, 100 ml",
+        "brand": "Eveline Cosmetics"
+      },
+      "765124": {
+        "name": "Eveline Cosmetics Better Tubing",
+        "description": "tusz do rzęs brązowy, 7 ml",
+        "brand": "Eveline Cosmetics"
+      },
+      "759328": {
+        "name": "Eveline Cosmetics MesoNeedles PDRN",
+        "description": "mezo-kuracja rekonstruktor sprężystości skóry, 40 ml",
+        "brand": "Eveline Cosmetics"
+      },
+      "765126": {
+        "name": "Eveline Cosmetics Better Tubing",
+        "description": "tusz do rzęs czarny, 7 ml",
+        "brand": "Eveline Cosmetics"
+      },
+      "759330": {
+        "name": "Eveline Cosmetics MesoNeedles",
+        "description": "drobnoziarnisty mezo-peeling oczyszczający, 75 ml",
+        "brand": "Eveline Cosmetics"
+      }
+    }
+  },
+  {
+    "page": 13,
+    "width": 510.2359924316406,
+    "height": 779.5280151367188,
+    "captions": [
+      {
+        "text": "PRORASO Refreshing orzeźwiająca woda po goleniu, 100 ml 100 ml=15,99 zł",
+        "box": [
+          14.173199653625488,
+          57.53001403808594,
+          72.5724105834961,
+          108.8280258178711
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "BULLDOG Original olejek do brody, 30 ml 100 ml=66,63 zł",
+        "box": [
+          178.58261108398438,
+          57.53001403808594,
+          228.1619110107422,
+          100.72798919677734
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "BANDI PROFESSIONAL 4Men przeciwzmarszczkowy krem do twarzy, 50 ml 100 ml=99,98 zł",
+        "box": [
+          342.9920959472656,
+          57.53001403808594,
+          411.0392150878906,
+          118.72798919677734
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "TANITA pianka do golenia, 200 ml 100 ml=4,50 zł",
+        "box": [
+          14.173199653625488,
+          200.96299743652344,
+          70.91567993164062,
+          234.26113891601562
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "PHILIPS OneBlade Intimate QP229/52 wymienne ostrza do golenia, 2 szt./1 opak. 1 szt.=45,00 zł",
+        "box": [
+          178.58261108398438,
+          200.96299743652344,
+          253.2997283935547,
+          262.1610412597656
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "LAURA CONTI EcoSoft Botanical organiczny balsam wygładzający do ust z propolisem, 1 szt.",
+        "box": [
+          342.9920959472656,
+          200.96299743652344,
+          410.8511047363281,
+          253.81092834472656
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "LE PETIT MARSEILLAIS Raspberry & Peony kremowy żel pod prysznic, 400 ml 100 ml=2,90 zł",
+        "box": [
+          14.173199653625488,
+          344.3961181640625,
+          95.03641510009766,
+          397.4941101074219
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "PALMOLIVE Wellness Feel The Massage żel pod prysznic, 500 ml 100 ml=2,40 zł",
+        "box": [
+          178.58261108398438,
+          344.3961181640625,
+          248.21563720703125,
+          397.4941101074219
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "DOVE Hydrate żel pod prysznic, 450 ml 100 ml=3,29 zł",
+        "box": [
+          342.9920959472656,
+          344.3961181640625,
+          394.25604248046875,
+          387.5941162109375
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "AQUASELIN Extreme antyperspirant w kulce, różne rodzaje, 50 ml",
+        "box": [
+          17.77910041809082,
+          638.2815551757812,
+          70.07225036621094,
+          671.8424682617188
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      },
+      {
+        "text": "VIVIAN GRAY Aroma Selection żel do kąpieli i pod prysznic, 500 ml",
+        "box": [
+          419.7651062011719,
+          675.4862670898438,
+          469.26220703125,
+          709.0471801757812
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      }
+    ],
+    "headers": [
+      {
+        "text": "05-22.11",
+        "box": [
+          19.842500686645508,
+          10.615534782409668,
+          63.81650161743164,
+          27.37353515625
+        ],
+        "size": 14.0,
+        "font": "MyriadPro-SemiCn",
+        "color": 16777215
+      }
+    ],
+    "validity": [],
+    "conditions": [
+      {
+        "text": "Kup produkt marki WILKINSON, a drugi w tej samej cenie lub tańszy kupisz 60% taniej",
+        "box": [
+          31.33069610595703,
+          555.8554077148438,
+          123.71479797363281,
+          603.1593627929688
+        ],
+        "size": 0,
+        "font": "",
+        "color": 0
+      }
+    ],
+    "prices": [
+      [
+        {
+          "text": "1599",
+          "box": [
+            14.173199653625488,
+            133.3839111328125,
+            66.7001724243164,
+            175.20391845703125
+          ],
+          "size": 34.0,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        15.99
+      ],
+      [
+        {
+          "text": "1299",
+          "box": [
+            342.9920959472656,
+            276.81689453125,
+            395.51904296875,
+            318.63690185546875
+          ],
+          "size": 34.0,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        12.99
+      ],
+      [
+        {
+          "text": "1479",
+          "box": [
+            342.9920959472656,
+            420.2501220703125,
+            395.2062683105469,
+            462.07012939453125
+          ],
+          "size": 34.0,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        14.79
+      ],
+      [
+        {
+          "text": "1999",
+          "box": [
+            178.58270263671875,
+            133.3839111328125,
+            231.10968017578125,
+            175.20391845703125
+          ],
+          "size": 34.0,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        19.99
+      ],
+      [
+        {
+          "text": "4999",
+          "box": [
+            342.9920959472656,
+            133.3837890625,
+            395.51904296875,
+            175.20379638671875
+          ],
+          "size": 34.0,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        49.99
+      ],
+      [
+        {
+          "text": "8999",
+          "box": [
+            178.58270263671875,
+            276.81689453125,
+            231.10968017578125,
+            318.63690185546875
+          ],
+          "size": 34.0,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        89.99
+      ],
+      [
+        {
+          "text": "899",
+          "box": [
+            14.173199653625488,
+            276.81689453125,
+            49.15646743774414,
+            318.63690185546875
+          ],
+          "size": 34.0,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        8.99
+      ],
+      [
+        {
+          "text": "1159",
+          "box": [
+            14.173199653625488,
+            420.25,
+            66.3367691040039,
+            462.07000732421875
+          ],
+          "size": 34.0,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        11.59
+      ],
+      [
+        {
+          "text": "1199",
+          "box": [
+            178.58270263671875,
+            420.25,
+            231.10968017578125,
+            462.07000732421875
+          ],
+          "size": 34.0,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        11.99
+      ],
+      [
+        {
+          "text": "1699",
+          "box": [
+            72.98069763183594,
+            631.456787109375,
+            115.00235748291016,
+            664.9127807617188
+          ],
+          "size": 27.200000762939453,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        16.99
+      ],
+      [
+        {
+          "text": "2199",
+          "box": [
+            419.7651062011719,
+            707.4586181640625,
+            461.7866516113281,
+            740.9146118164062
+          ],
+          "size": 27.200000762939453,
+          "font": "MyriadPro-BoldSemiCn",
+          "color": 15810963
+        },
+        21.99
+      ]
+    ],
+    "hotspots": [
+      {
+        "desc": "",
+        "amountselection": false,
+        "pageIndex": 12,
+        "width": 0.052,
+        "productId": "000000000000739668",
+        "zindex": 0,
+        "shape": 0,
+        "extension": "svg",
+        "id": 1152858109,
+        "x": 0.284,
+        "y": 0.748,
+        "type": 13,
+        "alternativeShopImage": null,
+        "fileid": 1472941,
+        "height": 0.034,
+        "alttext": null,
+        "styleid": -1,
+        "aws": "22e90add-89b1-4c63-9b05-709b2d56085d.svg",
+        "name": "000000000000739668",
+        "packagesize": 1,
+        "customsizeunit": null,
+        "price": 0.0,
+        "category": "Automatic"
+      },
+      {
+        "desc": "",
+        "amountselection": false,
+        "pageIndex": 12,
+        "width": 0.052,
+        "productId": "000000000000740820",
+        "zindex": 0,
+        "shape": 0,
+        "extension": "svg",
+        "id": 1152858151,
+        "x": 0.264,
+        "y": 0.938,
+        "type": 13,
+        "alternativeShopImage": null,
+        "fileid": 1472941,
+        "height": 0.034,
+        "alttext": null,
+        "styleid": -1,
+        "aws": "22e90add-89b1-4c63-9b05-709b2d56085d.svg",
+        "name": "000000000000740820",
+        "packagesize": 1,
+        "customsizeunit": null,
+        "price": 0.0,
+        "category": "Automatic"
+      },
+      {
+        "desc": "",
+        "amountselection": false,
+        "pageIndex": 12,
+        "width": 0.052,
+        "productId": "000000000000740822",
+        "zindex": 0,
+        "shape": 0,
+        "extension": "svg",
+        "id": 1152858154,
+        "x": 0.082,
+        "y": 0.938,
+        "type": 13,
+        "alternativeShopImage": null,
+        "fileid": 1472941,
+        "height": 0.034,
+        "alttext": null,
+        "styleid": -1,
+        "aws": "22e90add-89b1-4c63-9b05-709b2d56085d.svg",
+        "name": "000000000000740822",
+        "packagesize": 1,
+        "customsizeunit": null,
+        "price": 0.0,
+        "category": "Automatic"
+      },
+      {
+        "desc": "",
+        "amountselection": false,
+        "pageIndex": 12,
+        "width": 0.052,
+        "productId": "000000000000739669",
+        "zindex": 0,
+        "shape": 0,
+        "extension": "svg",
+        "id": 1152858165,
+        "x": 0.441,
+        "y": 0.748,
+        "type": 13,
+        "alternativeShopImage": null,
+        "fileid": 1472941,
+        "height": 0.034,
+        "alttext": null,
+        "styleid": -1,
+        "aws": "22e90add-89b1-4c63-9b05-709b2d56085d.svg",
+        "name": "000000000000739669",
+        "packagesize": 1,
+        "customsizeunit": null,
+        "price": 0.0,
+        "category": "Automatic"
+      }
+    ],
+    "products": {
+      "740822": {
+        "name": "Aquaselin Extreme",
+        "description": "antyperspirant męski w kulce, 50 ml",
+        "brand": "Aquaselin"
+      },
+      "740820": {
+        "name": "Aquaselin Intensive",
+        "description": "antyperspirant damski w kulce, 50 ml",
+        "brand": "Aquaselin"
+      },
+      "739669": {
+        "name": "Wilkinson Intuition Complete",
+        "description": "maszynka do golenia z 5 ostrzami, 1 szt.",
+        "brand": "Wilkinson"
+      },
+      "739668": {
+        "name": "Wilkinson Hydro 5",
+        "description": "zestaw: maszynka do golenia dla mężczyzn, 1 szt. + wymienne ostrze, 2 szt.",
+        "brand": "Wilkinson"
+      }
+    }
+  }
+]

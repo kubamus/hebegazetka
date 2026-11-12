@@ -8,9 +8,16 @@ plik `.xlsx` z czterema kolumnami:
 | --- | --- | --- | --- |
 | &honey Melty Moist Repair — odżywka do włosów puszących się, 445 g | 740207 | 05.11.2026–13.11.2026 | Cena promocyjna: 39,99 zł |
 
-Nazwy i opisy wariantów są pobierane po ID ze szczegółów produktów Hebe.
-Kliknięcie nazwy w Excelu otwiera stronę produktu. Daty, ceny i warunki promocji
-pochodzą z gazetki. Skrypt nie ma wpisanego na stałe adresu konkretnego wydania,
+Nazwy, opisy wariantów, marka, bieżące ceny i etykiety promocji są pobierane po ID
+z publicznego API Hebe `POST /productsInfo?products=ID1,ID2,...`, po 20 produktów
+w jednym zapytaniu. Odpowiedzi są łączone po ID, niezależnie od kolejności.
+Brakujące lub nieprawidłowe rekordy są uzupełniane z QuickView, czyli podglądu
+otwieranego koszykiem w gazetce. Nie trzeba kopiować cookies ani nagłówków sesji
+z przeglądarki. Nazwa w Excelu prowadzi przez adres produktu z jego ID.
+Kliknięcie nazwy w Excelu otwiera stronę produktu. Daty, ceny i pełne warunki
+eksportowanej promocji pochodzą z gazetki. Drugi arkusz, **Weryfikacja**, zawiera
+porównanie każdego wiersza z datowanymi danymi API lub QuickView oraz źródło daty.
+Skrypt nie ma wpisanego na stałe adresu konkretnego wydania,
 liczby stron, dat ani listy ID. Nie wymaga klucza API ani płatnej usługi.
 
 ## Instalacja
@@ -55,46 +62,108 @@ Można wybrać inną gazetkę ze strony Hebe:
 
 Tryb `--headless` ukrywa okno, ale Hebe może go blokować.
 
-`--skip-names` pomija pobieranie nazw. Kolumna Produkt pozostaje wtedy oznaczona
-jako „BRAK NAZWY”; pozostałe dane są nadal eksportowane.
+`--skip-names` ukrywa nazwy i opisy w arkuszu Promocje. Dane z API są nadal
+pobierane, ponieważ tożsamość produktu jest potrzebna do przypisania promocji.
 
-Powtórzenia tego samego ID korzystają ze wspólnego wyniku pobierania, z najwyżej
-trzema równoległymi zapytaniami. Dla skróconych ID skrypt próbuje też formatu
-z zerami na początku wymaganego przez katalog Hebe. Sprawdza, czy ID w linku produktu zgadza
-się z ID z gazetki. Brak nazwy, usunięty produkt albo blokada Hebe nie usuwają
-wiersza: nazwa otrzymuje oznaczenie „BRAK NAZWY”, a przyczyna jest dopisana do
+Powtórzenia tego samego ID korzystają ze wspólnego wyniku pobierania. Dla
+skróconych ID skrypt próbuje też formatu z zerami na początku wymaganego przez
+katalog Hebe. Sprawdza zarówno `pid`, jak i ID w danych produktu. Rekord z innym
+ID, pustą nazwą, brakującą ceną lub niepotwierdzoną walutą nie jest przyjmowany.
+QuickView używany jako źródło zapasowe ma najwyżej trzy równoległe zapytania
+i sprawdza również ID w linku produktu. Brak nazwy, usunięty produkt albo blokada Hebe nie usuwają
+wiersza: zamiast nazwy widnieje „ID <numer>”, a przyczyna jest dopisana do
 pola „DO SPRAWDZENIA”. Nie zgaduje nazw z sąsiednich produktów w PDF.
 
 ## Rozpoznawanie i ograniczenia
 
-ID pochodzą bezpośrednio z warstwy koszyków iPaper. W Excelu są tekstem,
+ID pochodzą bezpośrednio z warstwy koszyków iPaper. Ta warstwa nie udostępnia
+cen ani warunków promocji (pole ceny w aktualnie sprawdzanym wydaniu ma wartość
+techniczną `0`). W Excelu ID są tekstem,
 bez technicznych zer na początku. Zapis dotyczy produktów z klikalnym koszykiem;
 nie rozszerza promocji na wszystkie produkty danej marki w sklepie.
 
-Skrypt analizuje położenie tekstu, zdjęć, linii i ramek w PDF. Rozpoznaje ceny
-promocyjne, warunki typu „drugi produkt -60%”, okresy z nagłówków oraz wyjątki
-z przypisów. Zachowuje osobne wiersze, gdy to samo ID ma różne oferty.
+Skrypt wiąże ID z opisem w PDF na podstawie marki, nazwy, opisu i pojemności
+potwierdzonych w API lub QuickView. Położenie tekstu rozstrzyga między pasującymi opisami.
+Jeden opis może obejmować kilka wariantów, np. tusz czarny i brązowy opisane jako
+„różne rodzaje”. Brak zgodnej tożsamości lub konflikt wariantów powoduje
+wstrzymanie przypisania ceny. Skrypt nie przesuwa produktu do wolnego opisu
+sąsiada. Promocje określonej marki wymagają zgodności marki; ogólne kampanie
+korzystają z wydzielonego panelu gazetki. Rozpoznaje ceny promocyjne, warunki typu
+„drugi produkt -60%”, okresy z nagłówków oraz wyjątki z przypisów. Zachowuje osobne
+wiersze, gdy to samo ID ma różne oferty.
 
-To parser układu PDF, nie pełna interpretacja obrazu. **Wiersze o niejednoznacznym
-przypisaniu są żółte i zawierają „DO SPRAWDZENIA” wraz z numerem strony.**
-Wartości w tych wierszach są propozycją do weryfikacji. Brakująca promocja lub data
+PDF z zaznaczalnym tekstem jest pobierany automatycznie przy każdym uruchomieniu.
+Daty mają następującą kolejność pierwszeństwa:
+
+1. Przypis przypisany do produktu przez dokładną liczbę gwiazdek (`*`, `**`, `***` itd.).
+2. Przypis kampanii lub przypis wewnątrz konkretnego pola produktu.
+3. Daty w nagłówku właściwego panelu strony.
+4. Ogólna klauzula „Oferta obowiązuje w dniach…” z warunków gazetki.
+
+Przypisy są dzielone na osobne klauzule nawet wtedy, gdy PDF umieszcza je
+w jednym wierszu lub bloku tekstu. Pozycje znaków odróżniają przypisy z różnych
+kolumn. Ten sam `*` może oznaczać różne okresy w różnych polach produktu.
+Osobno zapisany indeks górny też może zostać połączony z opisem produktu.
+Klauzule „Promocja nie łączy się…” i „Marka dostępna…” są zachowywane jako
+powiązane warunki, ale nie zmieniają dat obowiązywania. Nieodczytany przypis
+produktu lub sprzeczne daty powodują oznaczenie daty do sprawdzenia.
+W arkuszu Weryfikacja jest cytowany przypis i numer strony, a w JSON również
+liczba gwiazdek, pozycja klauzuli i warunek wyczerpania zapasów.
+
+Każdy wiersz jest następnie porównywany z ofertą online. Arkusz Weryfikacja rozróżnia:
+
+- zgodną cenę lub zgodny mechanizm rabatu na drugi produkt,
+- inną ofertę online jako informację o różnicy między źródłami,
+- promocję zakończoną lub przyszłą względem daty pobrania danych online,
+- konflikt tożsamości produktu lub brak danych do porównania.
+
+API i QuickView pokazują **bieżącą ofertę online**. Mogą zawierać inny kod rabatowy,
+cenę internetową albo ofertę innego kanału sprzedaży. Nie udostępniają
+dat konkretnej gazetki, a zgodna etykieta rabatu nie potwierdza wszystkich jej
+warunków. Bieżąca cena nie zastępuje ceny drukowanej. ID kampanii nie jest
+interpretowane jako okres promocji. Oferty zakończone i przyszłe nie są
+automatycznie uznawane za błędne z powodu innej bieżącej ceny.
+
+**Żółty wiersz i „DO SPRAWDZENIA” oznaczają problem z odczytem lub przypisaniem
+oferty z gazetki:** brak daty, brak promocji, niejednoznaczny produkt albo konflikt
+przypisów. Różnica ceny lub promocji online pozostaje informacją w arkuszu
+Weryfikacja i nie wywołuje żółtego ostrzeżenia. Sam brak danych online też nie
+oznacza błędu poprawnie odczytanej oferty. W tym wydaniu warunki gazetki wskazują
+ceny wybranych sklepów stacjonarnych, z osobnym oznaczeniem ofert online.
+
+Błędny link w samej gazetce
+też może wymagać wyjaśnienia: np. koszyk przy jednym modelu koca może otwierać
+inny model tej samej marki. Takiemu ID nie jest przypisywana cena sąsiedniego
+opisu. Brakująca promocja lub data
 jest oznaczona wprost. Całkowicie graficzny PDF lub zmiana szablonu może wymagać
 rozbudowania parsera; nie można zagwarantować poprawnego odczytu dowolnego
 przyszłego układu. Skrypt nie zastępuje nierozpoznanej oferty bieżącą ceną online.
 
-Obok Excela powstaje katalog `<nazwa>-dane` z PDF, `source.json` i `offers.json`.
-Zawiera źródła oraz numer strony dla każdego ID. Można ponownie przeliczyć
+Do porównania ceny API służy `priceObj.SalesPrice`. Cena omnibus, cena regularna,
+widełki `min/max` ani warunkowa cena z kodem, kartą lub statusem VIP nie zastępują
+tej wartości. Dodatkowe ceny są zachowane w źródle. Mechanizm rabatu jest
+odczytywany także z `badge.everyonePromotionBadge.calloutMsg`, jeśli brakuje go
+w krótkiej etykiecie.
+
+Obok Excela powstaje katalog `<nazwa>-dane` z PDF, `source.json`, `offers.json`,
+folderem `productsInfo/` z surowymi odpowiedziami JSON i, jeśli użyto źródła
+zapasowego, folderem `quickview/` z HTML. W `source.json` są zapisane odczytane
+ceny, etykiety, czas pobrania i skrót SHA-256 każdej odpowiedzi. `offers.json`
+zawiera dopasowany opis i jego współrzędne, źródło i dowód odczytania daty,
+numer koszyka, porównanie dla każdego wiersza oraz podsumowanie weryfikacji.
+Można ponownie przeliczyć
 zachowane wydanie bez pobierania go z internetu:
 
 ```sh
 .venv/bin/python hebe.py --replay outputs/<data-i-czas>/hebe-dane
 ```
 
-Nazwy są zapisywane w `source.json`, dlatego odtwarzanie wydania również działa
-bez internetu. Starsze zapisane wydania, utworzone przed obsługą nazw, nie mają
-tych danych; aby je pobrać, wykonaj nowe uruchomienie online.
+Odtwarzanie wydania działa bez internetu i korzysta z daty zapisanej odpowiedzi,
+nie z daty odtworzenia. Starsze archiwa bez odpowiedzi API ani QuickView są oznaczane
+jako nieweryfikowalne. Aby zapisać komplet danych, wykonaj nowe uruchomienie online.
 
-`--strict` zwraca kod zakończenia `2`, jeśli jakiś wiersz wymaga sprawdzenia;
+`--strict` zwraca kod zakończenia `2`, jeśli odczyt lub przypisanie oferty z gazetki
+wymaga sprawdzenia. Same różnice oferty online nie powodują kodu `2`;
 Excel nadal jest zapisywany. Błąd pobierania zwraca `1`. Zwykłe zakończenie ma kod
 `0`, a liczba wierszy do sprawdzenia zawsze pojawia się w logu.
 `--json-only` pomija zapis Excela.

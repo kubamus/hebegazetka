@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import Counter
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 import json
 import logging
@@ -13,12 +13,17 @@ from pathlib import Path
 import re
 import shutil
 import sys
+import textwrap
 import unicodedata
 from urllib.parse import urljoin, urlparse
 
 import pymupdf
 from playwright.async_api import async_playwright, Error as PlaywrightError
 from product_names import fetch_names, enrich_offers
+from product_matching import brand_matches, caption_identity, folded
+from promotion_verification import verify_offers
+from legal_footnotes import extract_legal_notes, markers, split_legal_text
+from products_api import fetch_products_info
 
 LOG = logging.getLogger("hebe")
 HOME = "https://www.hebe.pl/gazetka-hebe?magazine=digital"
@@ -98,6 +103,8 @@ class Offer:
     product: str = ""
     product_description: str = ""
     product_url: str = ""
+    evidence: dict = field(default_factory=dict)
+    verification: dict = field(default_factory=dict)
 
 
 def extract_lines(page) -> list[Text]:
@@ -211,6 +218,7 @@ class PageParser:
         self.lines = extract_lines(page)
         self.conditions = paragraphs(self.lines,r"^Kup (?:produkt|dwa|balsam|pastę)")
         self.validity = paragraphs(self.lines,r"\*+\s*Promocja obowiązuje")
+        self.legal_notes = extract_legal_notes(page, year, parse_period)
         self.captions = caption_groups(self.lines)
         self.headers = [t for t in self.lines if DATE_RE.fullmatch(t.text.strip(" *"))
                         and parse_period(t.text, year) and t.size >= 10]
@@ -226,8 +234,10 @@ class PageParser:
             if t.size >= 16 and re.fullmatch(r"\d{3,6}", t.text):
                 self.prices.append((t, int(t.text) / 100))
 
-    def assign_captions(self, hotspots: list[dict]):
+    def assign_captions(self, hotspots: list[dict], products: dict | None = None):
         """Match PDF captions to product images at cart coordinates, without product requests."""
+        if products is not None:
+            return self.assign_verified_captions(hotspots, products)
         pairs = []
         for index, h in enumerate(hotspots):
             px = (h["x"] + h["width"]/2) * self.width
@@ -272,6 +282,46 @@ class PageParser:
                     assigned.pop(hi,None)
         return assigned
 
+    def assign_verified_captions(self, hotspots, products):
+        """Identity first; several explicitly advertised variants may share copy."""
+        assigned = {}
+        self.identity_matches = {}
+        for index, hotspot in enumerate(hotspots):
+            product = products.get(product_id(hotspot["productId"]), {})
+            px = (hotspot["x"] + hotspot["width"]/2) * self.width
+            py = (hotspot["y"] + hotspot["height"]/2) * self.height
+            candidates = []
+            for ci, caption in enumerate(self.captions):
+                identity = caption_identity(caption.text, product)
+                if identity:
+                    distance = abs(caption.x-px)/self.width + abs(caption.y-py)/self.height
+                    candidates.append((identity["score"], -distance, ci, identity))
+            candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+            if not candidates:
+                continue
+            best = candidates[0]
+            identity = dict(best[3])
+            identity["ambiguous"] = bool(len(candidates) > 1
+                and best[0]-candidates[1][0] < .08
+                and abs(best[1]-candidates[1][1]) < .15)
+            identity["caption_index"] = best[2]
+            self.identity_matches[index] = identity
+            assigned[index] = (self.captions[best[2]], 0, True)
+        # Sharing a specific single-product caption is a conflict, not a reason
+        # to shift one of the products to a less suitable neighbour.
+        for index, identity in self.identity_matches.items():
+            others = [hi for hi, other in self.identity_matches.items()
+                      if other["caption_index"] == identity["caption_index"]]
+            if len({product_id(hotspots[hi]["productId"]) for hi in others}) > 1:
+                identities = {(folded(products[product_id(hotspots[hi]["productId"])]["name"]),
+                               folded(products[product_id(hotspots[hi]["productId"])].get("description", "")))
+                              for hi in others}
+                if len(identities) == 1:
+                    identity["shared_variants"] = True
+                elif not identity["shared_variants"]:
+                    identity["ambiguous"] = True
+        return assigned
+
     def cell(self, point):
         px, py = point[0]*self.width, point[1]*self.height
         horizontal = [r for r in self.rules if r.height < 2 and r.x0-3 <= px <= r.x1+3]
@@ -304,6 +354,107 @@ class PageParser:
         return max(candidates, key=lambda r: r.get_area()) if candidates else self.page.rect
 
     def period(self, point, caption: Text | None, default):
+        return self.period_resolution(point,caption,default)["period"]
+
+    def _legal_notes(self):
+        if hasattr(self,"legal_notes"):
+            return self.legal_notes
+        notes = extract_legal_notes(self.page,self.year,parse_period)
+        if not notes:
+            for note in self.validity:
+                notes.extend(split_legal_text(note.text,note.box,self.year,parse_period))
+        return notes
+
+    def _notes_for_marker(self, point, marker):
+        notes = [n for n in self._legal_notes() if n["marker"] == marker]
+        cell, section = self.cell(point), self.section(point)
+        def inside(note, rect, margin=3):
+            box = pymupdf.Rect(note["box"])
+            expanded = pymupdf.Rect(rect.x0-3,rect.y0-3,rect.x1+3,rect.y1+margin)
+            return expanded.contains(pymupdf.Point((box.x0+box.x1)/2,(box.y0+box.y1)/2))
+        if cell:
+            local = [n for n in notes if inside(n,cell)]
+            if local:
+                return local
+        if section != self.page.rect:
+            local = [n for n in notes if inside(n,section,12)]
+            if local:
+                return local
+        # A common page footer can serve several products. A note inside a
+        # different product cell cannot become an override just by proximity.
+        return [n for n in notes if n["box"][1] >= self.height*.90
+                or n["box"][2]-n["box"][0] >= self.width*.65]
+
+    def _product_markers(self, caption):
+        if caption is None:
+            return set()
+        found = markers(caption.text)
+        # Superscript stars can be separate PDF lines rather than part of the name.
+        for star in getattr(self,"lines",[]):
+            if not re.fullmatch(r"[\s*]+",star.text):
+                continue
+            for line in getattr(self,"lines",[]):
+                if (line.text != star.text and pymupdf.Rect(caption.box).contains(pymupdf.Point(line.x,line.y))
+                        and 0 <= star.box[0]-line.box[2] <= 8
+                        and line.box[1]-6 <= star.y <= line.box[3]):
+                    found.update(markers(star.text))
+        return found
+
+    def _campaign_markers(self, point):
+        cell, section = self.cell(point), self.section(point)
+        found = set()
+        for text in getattr(self,"lines",[]):
+            if "*" not in text.text or re.search(r"Promocja|Marka dostępna",text.text,re.I):
+                continue
+            standalone = bool(re.fullmatch(r"[\s*]+",text.text))
+            global_heading = (standalone and text.size >= 10) or text.size > 16
+            local = (cell is not None and cell.contains(pymupdf.Point(text.x,text.y))) or (
+                section != self.page.rect and pymupdf.Rect(section.x0-3,section.y0-12,
+                section.x1+3,section.y1+12).contains(pymupdf.Point(text.x,text.y)))
+            if global_heading or (standalone and local):
+                found.update(markers(text.text))
+        return found
+
+    def period_resolution(self, point, caption: Text | None, default, default_evidence=None):
+        related = []
+        def resolve(references, source, require_note):
+            chosen, unresolved = [], []
+            for marker in sorted(references,key=len):
+                notes = self._notes_for_marker(point,marker)
+                related.extend(notes)
+                valid = [n for n in notes if n["kind"] == "validity"]
+                if (require_note and not notes) or any(n["period"] is None for n in valid):
+                    unresolved.append(marker)
+                chosen.extend(valid)
+            periods = {tuple(n["period"]) for n in chosen if n["period"]}
+            if unresolved or len(periods) > 1:
+                warning = ("Nie odczytano przypisu daty " + ", ".join(unresolved)) if unresolved else "Sprzeczne daty w przypisach tej oferty"
+                return {"period":None,"source":"unresolved_footnote" if unresolved else "conflicting_footnotes",
+                        "markers":sorted(references,key=len),"legal_notes":chosen,"related_notes":list(related),
+                        "warnings":[warning]}
+            if periods:
+                return {"period":next(iter(periods)),"source":source,
+                        "markers":sorted({n["marker"] for n in chosen},key=len),"legal_notes":chosen,
+                        "related_notes":list(related),"warnings":[]}
+            return None
+
+        # A product's exact marker overrides campaign headings and default dates.
+        result = resolve(self._product_markers(caption),"product_footnote",True)
+        if result:
+            return result
+        result = resolve(self._campaign_markers(point),"campaign_footnote",False)
+        if result:
+            return result
+        # A dedicated product cell may contain its own legal validity paragraph.
+        cell = self.cell(point)
+        if cell:
+            local = [n for n in self._legal_notes() if n["kind"] == "validity" and cell.contains(
+                pymupdf.Point((n["box"][0]+n["box"][2])/2,(n["box"][1]+n["box"][3])/2))]
+            if local:
+                result = resolve({n["marker"] for n in local},"local_footnote",True)
+                if result:
+                    return result
+
         section = self.section(point)
         px, py = point[0] * self.width, point[1] * self.height
         headers = self.headers
@@ -313,50 +464,25 @@ class PageParser:
                 inside = [h for h in headers if section.y0 <= h.y <= section.y1]
             candidates = inside or headers
             if len({parse_period(h.text, self.year) for h in candidates}) == 1:
-                period = parse_period(candidates[0].text, self.year)
+                header = candidates[0]
             else:
                 # Headers run across the top or down the right edge of a panel.
                 def score(h):
                     vertical = h.box[3] - h.box[1] > h.box[2] - h.box[0]
                     return (abs(h.y - py) / self.height if vertical else
                             abs(h.x - px) / self.width + max(0, h.y - py) / self.height)
-                period = parse_period(min(candidates, key=score).text, self.year)
+                header = min(candidates, key=score)
+            return {"period":parse_period(header.text,self.year),"source":"page_header",
+                    "header_text":header.text,"header_box":list(header.box),
+                    "legal_notes":[],"related_notes":related,"markers":[],"warnings":[]}
         else:
-            period = default
-        if not caption:
-            cell = self.cell(point)
-            local_notes = [n for n in self.validity if cell and cell.contains(pymupdf.Point(n.x,n.y))]
-            local_periods = {parse_period(n.text,self.year) for n in local_notes}
-            local_periods.discard(None)
-            return next(iter(local_periods)) if len(local_periods) == 1 else period
-        markers = re.findall(r"\*+", caption.text)
-        if not markers:
-            return period
-        marker = max(markers, key=len)
-        footnotes = []
-        for note in self.validity:
-            text = note.text
-            box = pymupdf.Rect(note.box)
-            cell = self.cell(point)
-            if cell and box.width < self.width*.65 and not cell.intersects(box):
-                continue
-            if section != self.page.rect and box.width < self.width*.65 and not section.intersects(box):
-                continue
-            # Only affirmative validity clauses. Exclusions may mention another campaign.
-            for match in re.finditer(r"(?<!\*)(\*+)\s*Promocja obowiązuje w dniach\s+([^*]+)", text, re.I):
-                if match[1] == marker:
-                    override = parse_period(match[2], self.year)
-                    if override:
-                        dist = (max(box.x0-caption.box[2],caption.box[0]-box.x1,0) / self.width
-                                + abs(box.y0-caption.box[3]) / self.height)
-                        footnotes.append((dist, override))
-        if footnotes:
-            period = min(footnotes, key=lambda item: item[0])[1]
-        return period
+            return {"period":default,"source":"catalogue_legal" if default else "missing",
+                    "legal_notes":[],"related_notes":related,"markers":[],"warnings":[],
+                    **(default_evidence or {})}
 
     def price(self, point, caption: Text | None):
         cell = self.cell(point)
-        if cell:
+        if cell and (caption is None or cell.contains(pymupdf.Point(caption.x,caption.y))):
             prices = [(t,value) for t,value in self.prices if cell.contains(pymupdf.Point(t.x,t.y))]
             if len(prices) == 1:
                 return prices[0][1]
@@ -382,8 +508,9 @@ class PageParser:
         ranked.sort(key=lambda item: item[0])
         return ranked[0][2]
 
-    def bundle_promotion(self, point, caption: Text | None, name: str = ""):
+    def bundle_promotion(self, point, caption: Text | None, name: str = "", brand: str = ""):
         """Use the printed purchase condition, rather than a nearby unrelated price."""
+        brand = brand or next((t for t in name.split() if len(t) >= 3), "")
         blocks = [t for t in self.conditions if re.search(r"drugi|drugą|brelok",t.text,re.I)]
         px, py = point[0] * self.width, point[1] * self.height
         cell = self.cell(point)
@@ -396,11 +523,13 @@ class PageParser:
                 for note in self.validity:
                     if ("Kup produkt" in note.text and abs(note.box[1]-section.y1) < 20
                             and note.box[2]-note.box[0] > section.width*.6):
+                        if re.search(r"\bmarki\b",note.text,re.I) and not brand_matches(note.text,brand):
+                            continue
                         return note.text[note.text.index("Kup produkt"):]
         # Offer panels at the bottom have a descriptive condition close to the icon.
-        brand = next((t for t in norm(name.split(" — ")[0]).split() if len(t) >= 3), "")
-        branded = [t for t in blocks if brand and brand in norm(t.text).split()]
-        candidates = [(abs(t.x-px)/self.width + abs(t.y-py)/self.height, t) for t in (branded or blocks)]
+        branded = [t for t in blocks if brand_matches(t.text, brand)]
+        # Never assign a nearby brand's campaign to an unidentified product.
+        candidates = [(abs(t.x-px)/self.width + abs(t.y-py)/self.height, t) for t in branded]
         if candidates:
             distance, text = min(candidates, key=lambda item: item[0])
             if distance < .40 and (caption is None or (branded and distance < .20)):
@@ -417,34 +546,46 @@ class PageParser:
                 # Require the same panel when the page has multiple campaigns.
                 section = self.section(point)
                 if section != self.page.rect and section.contains(pymupdf.Point(nearest.x, nearest.y)):
+                    local_brands = [b for b in self.conditions if re.search(r"\bmarki\b",b.text,re.I)
+                                    and section.contains(pymupdf.Point(b.x,b.y))]
+                    if local_brands and not any(brand_matches(b.text,brand) for b in local_brands):
+                        return None
                     percent = re.search(r"-\d+\s*%", nearest.text)[0].replace(" ", "")
                     mix = " Miksuj w ramach marki." if any("MIKSUJ W RAMACH MARKI" in t.text for t in self.lines) else ""
                     return f"Drugi produkt {percent} (w tej samej cenie lub tańszy).{mix}"
         return None
 
 
+def catalogue_period_evidence(document, year):
+    for page in reversed(document):
+        for block in page.get_text("blocks"):
+            text = clean(block[4])
+            match = re.search(r"Oferta obowiązuje w dniach\s+(.+)",text,re.I)
+            if match and (period := parse_period(match[1],year)):
+                return {"period":period,"source":"catalogue_legal","legal_text":text,
+                        "legal_box":list(block[:4]),"page":page.number+1}
+    return {}
+
+
 def default_period(settings: dict, document):
     all_text = " ".join(settings.get("pageTexts", []))
     years = Counter(re.findall(r"\b20\d{2}\b", all_text))
     year = int(years.most_common(1)[0][0]) if years else date.today().year
-    for page in reversed(document):
-        text = clean(page.get_text())
-        match = re.search(r"Oferta obowiązuje w dniach\s+(.+)", text, re.I)
-        if match and (period := parse_period(match[1], year)):
-            return year, period
+    evidence = catalogue_period_evidence(document,year)
     # Do not turn the dates of an individual promotion into the catalogue's default.
-    return year, None
+    return year, evidence.get("period")
 
 
-def parse_offers(settings: dict, hotspots: list[dict], pdf: Path):
+def parse_offers(settings: dict, hotspots: list[dict], pdf: Path, products: dict | None = None):
     offers = []
     with pymupdf.open(pdf) as doc:
         if len(doc) != len(settings["pages"]):
             raise ValueError("Liczba stron PDF nie zgadza się z aktualną gazetką.")
         year, default = default_period(settings, doc)
+        default_evidence = catalogue_period_evidence(doc,year)
         parsers = {i: PageParser(doc[i], year) for i in range(len(doc))}
         by_page = {i: [h for h in hotspots if h["pageIndex"] == i] for i in parsers}
-        assigned = {i: parsers[i].assign_captions(by_page[i]) for i in parsers}
+        assigned = {i: parsers[i].assign_captions(by_page[i], products) for i in parsers}
         for hotspot in hotspots:
             pid = product_id(hotspot["productId"])
             page_number = hotspot["pageIndex"]
@@ -454,28 +595,45 @@ def parse_offers(settings: dict, hotspots: list[dict], pdf: Path):
             local_index = by_page[page_number].index(hotspot)
             match = assigned[page_number].get(local_index)
             caption = match[0] if match else None
-            name = caption.text if caption else ""
-            period = parser.period(point, caption, default)
-            price = parser.price(point, caption)
-            bundle = None if price is not None else parser.bundle_promotion(point, caption, name)
+            product = (products or {}).get(pid, {})
+            name = product.get("name") or (caption.text if caption else "")
+            date_evidence = parser.period_resolution(point,caption,default,default_evidence)
+            date_evidence.setdefault("page",page_number+1)
+            period = date_evidence["period"]
+            price = parser.price(point, caption) if caption else None
+            bundle = None if price is not None else parser.bundle_promotion(point, caption, name, product.get("brand", ""))
             promotion = bundle or (f"Cena promocyjna: {price:.2f} zł".replace(".", ",") if price is not None else "DO SPRAWDZENIA — nie rozpoznano promocji")
-            warnings = []
+            warnings = list(date_evidence["warnings"])
             if not period:
                 warnings.append("Nie rozpoznano daty")
             if not bundle and price is None:
                 warnings.append("Nie rozpoznano promocji")
             section = parser.section(point)
-            section_hotspots = [h for h in by_page[page_number] if section.contains(pymupdf.Point(
-                (h["x"]+h["width"]/2)*parser.width,(h["y"]+h["height"]/2)*parser.height))]
-            section_captions = [c for c in parser.captions if section.contains(pymupdf.Point(c.x,c.y))
-                                and re.search(r"\d\s*(?:ml|g|szt|opak|kaps|cm)",c.text)]
-            image_match = bool(match and match[2] and match[1]<parser.width*.18
-                               and len(section_hotspots)==len(section_captions))
-            panel_campaign = bool(bundle and section != parser.page.rect)
-            if parser.cell(point) is None and not image_match and not panel_campaign:
-                warnings.append("Układ bez ramek — sprawdź przypisanie oferty do koszyka")
+            identity = getattr(parser,"identity_matches",{}).get(local_index,{})
+            if identity.get("ambiguous"):
+                warnings.append("Niejednoznaczne dopasowanie nazwy lub wariantu w gazetce")
+                promotion = "DO SPRAWDZENIA — niejednoznaczny produkt przy ofercie"
+            if not product.get("name"):
+                warnings.append("Nie zweryfikowano tożsamości produktu w danych Hebe")
+                promotion = "DO SPRAWDZENIA — brak tożsamości produktu z Hebe"
+            method = ("shared_variant_caption" if identity.get("shared_variants") else "product_identity") if caption else (
+                       "campaign_panel" if bundle else "unmatched")
+            evidence = {"hotspot_id": hotspot["id"], "match_method": method,
+                        "flyer_caption": caption.text if caption else "",
+                        "caption_box": list(caption.box) if caption else None,
+                        "panel_box": list(section), "identity": identity,
+                        "printed_price": price, "printed_condition": bundle,
+                        "promotion_source": "flyer_pdf", "date":date_evidence}
+            if method == "unmatched" and product.get("name"):
+                branded = [c for c in parser.captions if brand_matches(c.text,
+                    product.get("brand") or product["name"].split()[0])]
+                if branded:
+                    nearest = min(branded, key=lambda c: abs(c.x-point[0]*parser.width)/parser.width
+                                  + abs(c.y-point[1]*parser.height)/parser.height)
+                    evidence["nearby_caption_unverified"] = nearest.text
+                    warnings.append("Opis w gazetce nie zgadza się z produktem wskazanym przez koszyk")
             offers.append(Offer(period_label(period), pid, promotion, page_number+1,
-                                *(period or (None, None)), warnings))
+                                *(period or (None, None)), warnings, evidence=evidence))
     # The same ID may appear with several offers; remove only exact repeated occurrences.
     return list({(o.id, o.start, o.end, o.promotion): o for o in offers}.values())
 
@@ -529,13 +687,15 @@ async def collect(args, work: Path):
             download = await event.value
             pdf = work / "gazetka.pdf"
             await download.save_as(pdf)
-            products = {}
-            if not args.skip_names:
-                # Keep verification cookies separate from the embedded catalogue.
+            products = await fetch_products_info([e["productId"] for e in hotspots],
+                                                 archive_dir=work / "productsInfo")
+            missing = [e["productId"] for e in hotspots if product_id(e["productId"]) not in products]
+            if missing:
+                LOG.info("QuickView uzupełni %d produktów pominiętych przez productsInfo",len(set(missing)))
                 names_context = await browser.new_context(locale="pl-PL")
                 try:
-                    products = await fetch_names(names_context,
-                        [e["productId"] for e in hotspots],headless=args.headless)
+                    products.update(await fetch_names(names_context,missing,headless=args.headless,
+                                                     archive_dir=work / "quickview"))
                 finally:
                     await names_context.close()
             metadata = {"fetched_at": datetime.now().astimezone().isoformat(),
@@ -559,7 +719,7 @@ def write_excel(offers: list[Offer], output: Path, source: str):
     ws.title = "Promocje"
     ws.append(["Produkt", "ID", "Data obowiązywania", "Promocja"])
     for i, offer in enumerate(offers, 2):
-        product_label = offer.product or "BRAK NAZWY"
+        product_label = offer.product or "ID " + offer.id
         if offer.product_description:
             product_label += " — " + offer.product_description
         ws.append([product_label, offer.id, offer.period, offer.promotion])
@@ -591,7 +751,63 @@ def write_excel(offers: list[Offer], output: Path, source: str):
     ws.row_dimensions[1].height = 27
     ws.freeze_panes = "A2"
     ws.sheet_view.showGridLines = False
-    wb.properties.description = f"Źródło: {source}. Daty i promocje pochodzą z gazetki, nie z bieżących cen online."
+    if any(o.verification for o in offers):
+        audit = wb.create_sheet("Weryfikacja")
+        audit_widths = {"A":15,"B":8,"C":55,"D":36,"E":39,"F":60,"G":75,"H":29}
+        audit.append(["ID", "Strona", "Promocja z gazetki", "Bieżąca oferta online",
+                      "Porównanie oferty online", "Opis z gazetki", "Szczegóły", "Sprawdzono"])
+        for i, offer in enumerate(offers, 2):
+            verification = offer.verification
+            live = []
+            if verification.get("online_price") is not None:
+                live.append(str(verification["online_price"]).replace(".", ",") + " zł")
+            live.extend(b.get("text") or b["callout"] for b in verification.get("online_promotions", [])
+                        if b.get("text") or b.get("callout"))
+            printed_copy = offer.evidence.get("flyer_caption", "")
+            if not printed_copy and offer.evidence.get("nearby_caption_unverified"):
+                printed_copy = "NIEPOTWIERDZONY OPIS: " + offer.evidence["nearby_caption_unverified"]
+            checked = verification.get("checked_at", "")
+            if checked:
+                checked = datetime.fromisoformat(checked).strftime("%d.%m.%Y %H:%M:%S %z")
+            details = "Źródło online: " + verification.get("online_source","brak") + ".\n" + verification.get("details", "")
+            date_evidence = offer.evidence.get("date",{})
+            for note in date_evidence.get("legal_notes",[]):
+                details += "\nData z przypisu (strona " + str(date_evidence["page"]) + "): " + note["text"]
+            related = {note["text"] for note in date_evidence.get("related_notes",[]) if note["kind"] != "validity"}
+            for text in sorted(related):
+                details += "\nPowiązany przypis: " + text
+            if date_evidence.get("source") == "page_header":
+                details += "\nData z nagłówka (strona " + str(date_evidence["page"]) + "): " + date_evidence["header_text"]
+            elif date_evidence.get("legal_text"):
+                details += "\nData z warunków gazetki (strona " + str(date_evidence["page"]) + "): " + date_evidence["legal_text"].split(". ",1)[0]
+            audit.append([offer.id, str(offer.page), offer.promotion, "; ".join(live) or "Brak danych",
+                verification.get("label", "Brak danych"),
+                printed_copy, details, checked])
+            for cell in audit[i]:
+                cell.data_type = "s"
+                cell.font = Font(name="Arial", size=11)
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
+                if offer.warnings:
+                    cell.fill = PatternFill("solid", fgColor="FFF2CC")
+            audit.cell(i, 1).number_format = "@"
+            if verification.get("online_url"):
+                audit.cell(i, 1).hyperlink = verification["online_url"]
+            audit.row_dimensions[i].height = max(36,15 * max(sum(max(1,len(textwrap.wrap(line,
+                width=int(audit_widths[cell.column_letter]*.85)))) for line in str(cell.value or "").splitlines())
+                for cell in audit[i]))
+        for cell in audit[1]:
+            cell.font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="9D005D")
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+        audit.row_dimensions[1].height = 32
+        for col, width in audit_widths.items():
+            audit.column_dimensions[col].width = width
+        audit.freeze_panes = "C2"
+        audit.sheet_view.showGridLines = False
+        table = Table(displayName="WeryfikacjaHebe", ref=f"A1:H{len(offers)+1}")
+        table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
+        audit.add_table(table)
+    wb.properties.description = f"Źródło: {source}. Daty i promocje pochodzą z gazetki. Weryfikacja zawiera przypisy prawne i porównanie z API productsInfo lub QuickView."
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(".tmp.xlsx")
     wb.save(temporary)
@@ -606,7 +822,7 @@ async def main(argv=None):
     ap.add_argument("--browser-channel", default="chrome", choices=["chrome", "chromium"], help="Przeglądarka (domyślnie zainstalowany Chrome)")
     ap.add_argument("--replay", type=Path, help="Ponownie przetwórz zachowane dane z katalogu uruchomienia")
     ap.add_argument("--json-only", action="store_true", help="Pomiń eksport Excel, zachowaj dane JSON")
-    ap.add_argument("--skip-names", action="store_true", help="Pomiń pobieranie nazw produktów")
+    ap.add_argument("--skip-names", action="store_true", help="Ukryj nazwy; dane produktu są nadal pobierane do weryfikacji ofert")
     ap.add_argument("--strict", action="store_true", help="Zwróć kod 2, jeśli dowolny wiersz wymaga sprawdzenia")
     args = ap.parse_args(argv)
     output = args.output or Path("outputs") / datetime.now().strftime("%Y%m%d-%H%M%S-%f") / "hebe.xlsx"
@@ -620,18 +836,26 @@ async def main(argv=None):
         if args.replay.resolve() != work.resolve():
             shutil.copy2(pdf,work / "gazetka.pdf")
             (work / "source.json").write_text(json.dumps(metadata,ensure_ascii=False,indent=2),encoding="utf-8")
+            for folder in ("quickview","productsInfo"):
+                if (args.replay / folder).is_dir():
+                    shutil.copytree(args.replay / folder,work / folder,dirs_exist_ok=True)
     else:
         settings, hotspots, pdf, metadata = await collect(args, work)
-    offers = parse_offers(settings, hotspots, pdf)
+    offers = parse_offers(settings, hotspots, pdf, metadata.get("products",{}))
     enrich_offers(offers,metadata.get("products",{}),skipped=args.skip_names or metadata.get("names_skipped",False))
+    verify_offers(offers,metadata.get("products",{}),metadata["fetched_at"])
     report = {"source": metadata["source"], "viewer": metadata["viewer"],
               "fetched_at": metadata["fetched_at"], "catalogue": settings["name"],
               "count": len(offers), "offers": [asdict(o) for o in offers]}
+    report["verification_summary"] = dict(Counter(o.verification["status"] for o in offers))
+    report["date_sources"] = dict(Counter(o.evidence["date"]["source"] for o in offers))
     (work / "offers.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
     if not args.json_only:
         write_excel(offers, output, metadata["viewer"])
         LOG.info("Zapisano %s (%d wierszy)", output.resolve(), len(offers))
     warnings = sum(bool(o.warnings) for o in offers)
+    LOG.info("Weryfikacja oferty online: %s", report["verification_summary"])
+    LOG.info("Źródła dat: %s",report["date_sources"])
     LOG.info("Wiersze do sprawdzenia: %d. Dane źródłowe: %s", warnings, work.resolve())
     return 2 if warnings and args.strict else 0
 
