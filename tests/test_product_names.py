@@ -126,10 +126,12 @@ def test_excel_has_names_links_text_ids_and_literal_values(tmp_path):
     output=tmp_path/"wynik.xlsx"
     write_excel([offer],output,"https://www.hebe.pl/gazetka-hebe")
     ws=load_workbook(output).active
-    assert [c.value for c in ws[1]]==["Produkt","ID","Data obowiązywania","Promocja"]
+    assert [c.value for c in ws[1]][:4]==["Produkt","ID","Data obowiązywania","Promocja"]
     assert ws["A2"].data_type=="s"
     assert ws["A2"].value=="=Literalna nazwa"
     assert ws["A2"].hyperlink.target==offer.product_url
     assert ws["B2"].data_type=="s"
     assert ws["B2"].value=="740207"
-    assert ws.tables["PromocjeHebe"].ref=="A1:D2"
+    assert ws.tables["PromocjeHebe"].ref=="A1:H2"
+    assert ws["G2"].value == "Brak danych"
+    assert ws.freeze_panes == "C2"

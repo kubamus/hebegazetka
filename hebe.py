@@ -602,7 +602,7 @@ def parse_offers(settings: dict, hotspots: list[dict], pdf: Path, products: dict
             period = date_evidence["period"]
             price = parser.price(point, caption) if caption else None
             bundle = None if price is not None else parser.bundle_promotion(point, caption, name, product.get("brand", ""))
-            promotion = bundle or (f"Cena promocyjna: {price:.2f} zł".replace(".", ",") if price is not None else "DO SPRAWDZENIA — nie rozpoznano promocji")
+            promotion = bundle or (f"Cena z gazetki: {price:.2f} zł".replace(".", ",") if price is not None else "DO SPRAWDZENIA — nie rozpoznano promocji")
             warnings = list(date_evidence["warnings"])
             if not period:
                 warnings.append("Nie rozpoznano daty")
@@ -717,97 +717,63 @@ def write_excel(offers: list[Offer], output: Path, source: str):
     wb = Workbook()
     ws = wb.active
     ws.title = "Promocje"
-    ws.append(["Produkt", "ID", "Data obowiązywania", "Promocja"])
+    ws.append(["Produkt", "ID", "Data obowiązywania", "Promocja",
+               "Porównanie oferty online", "Bieżąca oferta online", "Promocja cenowa online",
+               "Strona gazetki"])
+    widths = {"A":65, "B":15, "C":29, "D":100, "E":39, "F":36,
+              "G":24, "H":12}
     for i, offer in enumerate(offers, 2):
         product_label = offer.product or "ID " + offer.id
         if offer.product_description:
             product_label += " — " + offer.product_description
-        ws.append([product_label, offer.id, offer.period, offer.promotion])
+        verification = offer.verification
+        live = []
+        if verification.get("online_price") is not None:
+            live.append(str(verification["online_price"]).replace(".", ",") + " zł")
+        live.extend(b.get("text") or b["callout"] for b in verification.get("online_promotions", [])
+                    if b.get("text") or b.get("callout"))
+        on_promotion = verification.get("online_on_promotion")
+        flag_label = "Tak" if on_promotion is True else "Nie" if on_promotion is False else "Brak danych"
+        ws.append([product_label, offer.id, offer.period, offer.promotion,
+                   verification.get("label", "Brak danych"), "; ".join(live) or "Brak danych",
+                   flag_label, str(offer.page)])
         for cell in ws[i]:
-            # Date intervals and identifiers are literal labels, never Excel formulas.
+            # Source strings (including IDs and badges) must never become formulas.
             cell.data_type = "s"
-            cell.alignment = Alignment(horizontal="left",vertical="center", wrap_text=True)
+            cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
             cell.font = Font(name="Arial", size=11)
-        ws.cell(i, 2).number_format = "@"
-        ws.cell(i, 3).alignment = Alignment(horizontal="center",vertical="center")
-        if offer.product_url:
-            ws.cell(i,1).hyperlink = offer.product_url
-        if offer.warnings:
-            for cell in ws[i]:
+            if offer.warnings:
                 cell.fill = PatternFill("solid", fgColor="FFF2CC")
+        ws.cell(i, 2).number_format = "@"
+        for col in (3, 7, 8):
+            ws.cell(i, col).alignment = Alignment(horizontal="center", vertical="top", wrap_text=True)
+        if offer.product_url:
+            ws.cell(i, 1).hyperlink = offer.product_url
+        if verification.get("online_url"):
+            ws.cell(i, 6).hyperlink = verification["online_url"]
+        if offer.warnings:
             ws.cell(i, 4).value += "\nDO SPRAWDZENIA: " + "; ".join(offer.warnings) + f" (strona {offer.page})"
-        ws.row_dimensions[i].height = max(15*((len(product_label)+55)//56),
-            60 if offer.warnings else (36 if len(offer.promotion)>110 else 25))
+        row_lines = 1
+        for cell in ws[i]:
+            wrap_width = max(1, int(widths[cell.column_letter] * .85))
+            line_count = sum(max(1, len(textwrap.wrap(line, width=wrap_width)))
+                             for line in str(cell.value or "").splitlines())
+            row_lines = max(row_lines, line_count)
+        ws.row_dimensions[i].height = max(36, 15 * row_lines)
     if offers:
-        table = Table(displayName="PromocjeHebe", ref=f"A1:D{len(offers)+1}")
+        table = Table(displayName="PromocjeHebe", ref=f"A1:H{len(offers)+1}")
         table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
         ws.add_table(table)
     for cell in ws[1]:
         cell.font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="9D005D")
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-    for col, width in {"A": 65, "B": 15, "C": 29, "D": 100}.items():
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for col, width in widths.items():
         ws.column_dimensions[col].width = width
-    ws.row_dimensions[1].height = 27
-    ws.freeze_panes = "A2"
+    ws.row_dimensions[1].height = 32
+    ws.freeze_panes = "C2"
     ws.sheet_view.showGridLines = False
-    if any(o.verification for o in offers):
-        audit = wb.create_sheet("Weryfikacja")
-        audit_widths = {"A":15,"B":8,"C":55,"D":36,"E":39,"F":60,"G":75,"H":29}
-        audit.append(["ID", "Strona", "Promocja z gazetki", "Bieżąca oferta online",
-                      "Porównanie oferty online", "Opis z gazetki", "Szczegóły", "Sprawdzono"])
-        for i, offer in enumerate(offers, 2):
-            verification = offer.verification
-            live = []
-            if verification.get("online_price") is not None:
-                live.append(str(verification["online_price"]).replace(".", ",") + " zł")
-            live.extend(b.get("text") or b["callout"] for b in verification.get("online_promotions", [])
-                        if b.get("text") or b.get("callout"))
-            printed_copy = offer.evidence.get("flyer_caption", "")
-            if not printed_copy and offer.evidence.get("nearby_caption_unverified"):
-                printed_copy = "NIEPOTWIERDZONY OPIS: " + offer.evidence["nearby_caption_unverified"]
-            checked = verification.get("checked_at", "")
-            if checked:
-                checked = datetime.fromisoformat(checked).strftime("%d.%m.%Y %H:%M:%S %z")
-            details = "Źródło online: " + verification.get("online_source","brak") + ".\n" + verification.get("details", "")
-            date_evidence = offer.evidence.get("date",{})
-            for note in date_evidence.get("legal_notes",[]):
-                details += "\nData z przypisu (strona " + str(date_evidence["page"]) + "): " + note["text"]
-            related = {note["text"] for note in date_evidence.get("related_notes",[]) if note["kind"] != "validity"}
-            for text in sorted(related):
-                details += "\nPowiązany przypis: " + text
-            if date_evidence.get("source") == "page_header":
-                details += "\nData z nagłówka (strona " + str(date_evidence["page"]) + "): " + date_evidence["header_text"]
-            elif date_evidence.get("legal_text"):
-                details += "\nData z warunków gazetki (strona " + str(date_evidence["page"]) + "): " + date_evidence["legal_text"].split(". ",1)[0]
-            audit.append([offer.id, str(offer.page), offer.promotion, "; ".join(live) or "Brak danych",
-                verification.get("label", "Brak danych"),
-                printed_copy, details, checked])
-            for cell in audit[i]:
-                cell.data_type = "s"
-                cell.font = Font(name="Arial", size=11)
-                cell.alignment = Alignment(vertical="top", wrap_text=True)
-                if offer.warnings:
-                    cell.fill = PatternFill("solid", fgColor="FFF2CC")
-            audit.cell(i, 1).number_format = "@"
-            if verification.get("online_url"):
-                audit.cell(i, 1).hyperlink = verification["online_url"]
-            audit.row_dimensions[i].height = max(36,15 * max(sum(max(1,len(textwrap.wrap(line,
-                width=int(audit_widths[cell.column_letter]*.85)))) for line in str(cell.value or "").splitlines())
-                for cell in audit[i]))
-        for cell in audit[1]:
-            cell.font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
-            cell.fill = PatternFill("solid", fgColor="9D005D")
-            cell.alignment = Alignment(vertical="center", wrap_text=True)
-        audit.row_dimensions[1].height = 32
-        for col, width in audit_widths.items():
-            audit.column_dimensions[col].width = width
-        audit.freeze_panes = "C2"
-        audit.sheet_view.showGridLines = False
-        table = Table(displayName="WeryfikacjaHebe", ref=f"A1:H{len(offers)+1}")
-        table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
-        audit.add_table(table)
-    wb.properties.description = f"Źródło: {source}. Daty i promocje pochodzą z gazetki. Weryfikacja zawiera przypisy prawne i porównanie z API productsInfo lub QuickView."
+    wb.properties.description = f"Źródło: {source}. Daty i promocje pochodzą z gazetki. Kolumny weryfikacji zawierają porównanie z API productsInfo lub QuickView. Szczegółowe dowody są zapisane w offers.json."
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(".tmp.xlsx")
     wb.save(temporary)

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pymupdf
 import pytest
 
-from hebe import Offer, PageParser, Text, write_excel
+from hebe import Offer, PageParser, Text, parse_offers, write_excel
 from product_matching import brand_matches, caption_identity
 from product_names import parse_product, fetch_names
 from promotion_verification import verify_offers
@@ -197,7 +197,7 @@ def test_fetch_archives_exact_html_with_checksum(tmp_path):
     assert page.closed
 
 
-def test_excel_audit_preserves_every_id_and_literal_badges(tmp_path):
+def test_excel_merges_verification_without_losing_literal_badges_or_source_links(tmp_path):
     from openpyxl import load_workbook
     product = parse_product(quickview_html(), "123")
     product["quickview"]["fetched_at"] = "2026-11-12T12:00:00+01:00"
@@ -208,10 +208,93 @@ def test_excel_audit_preserves_every_id_and_literal_badges(tmp_path):
     output = tmp_path / "audit.xlsx"
     write_excel(offers, output, "https://www.hebe.pl/gazetka-hebe")
     workbook = load_workbook(output)
-    assert workbook.sheetnames == ["Promocje", "Weryfikacja"]
-    audit = workbook["Weryfikacja"]
-    assert audit["A2"].value == "123" and audit["A2"].data_type == "s"
-    assert audit["A2"].hyperlink.target.endswith("pid=123")
-    assert "=untrusted label" in audit["D2"].value and audit["D2"].data_type == "s"
-    assert audit["E2"].value == "Cena zgodna z QuickView"
-    assert audit.freeze_panes == "C2" and len(audit.tables) == 1
+    assert workbook.sheetnames == ["Promocje"]
+    ws = workbook["Promocje"]
+    assert ws["B2"].value == "123" and ws["B2"].data_type == "s"
+    assert ws["F2"].hyperlink.target.endswith("pid=123")
+    assert "=untrusted label" in ws["F2"].value and ws["F2"].data_type == "s"
+    assert ws["E2"].value == "Cena zgodna z QuickView"
+    assert ws["H2"].value == "1"
+    assert ws.max_column == 8
+    assert ws.freeze_panes == "C2" and ws.tables["PromocjeHebe"].ref == "A1:H2"
+
+
+
+def test_standalone_pdf_price_is_not_claimed_to_be_a_discount(tmp_path):
+    pdf = tmp_path / "regular-price.pdf"
+    with pymupdf.open() as doc:
+        page = doc.new_page(width=500, height=800)
+        page.insert_text((20, 35), "05-22.11.2026", fontsize=14)
+        page.insert_text((100, 530), "39900", fontsize=24)
+        page.insert_text((100, 560), "STYLPRO", fontsize=10, fontname="hebo")
+        page.insert_text((100, 573), "maska LED do twarzy, 1 opak.", fontsize=10)
+        doc.save(pdf)
+    products = {"80370095": {"name": "Stylpro", "brand": "Stylpro",
+                "description": "maska LED do twarzy, 1 opak."}}
+    hotspots = [{"id": 1, "productId": "80370095", "pageIndex": 0,
+                 "x": .25, "y": .65, "width": .02, "height": .02}]
+    offers = parse_offers({"pages": [{}]}, hotspots, pdf, products)
+    assert len(offers) == 1
+    assert offers[0].evidence["printed_price"] == 399
+    assert offers[0].promotion == "Cena z gazetki: 399,00 zł"
+    assert (offers[0].start, offers[0].end) == ("2026-11-05", "2026-11-22")
+    assert not offers[0].warnings
+
+
+@pytest.mark.parametrize("flag", [False, True, None, "false"])
+def test_online_discount_flag_is_separate_from_matching_a_printed_price(flag):
+    offer = Offer("printed", "80370095", "Cena z gazetki: 399,00 zł", 17,
+                  "2026-11-05", "2026-11-22",
+                  evidence={"match_method": "product_identity", "printed_price": 399})
+    product = {"name": "Stylpro", "online": {
+        "source": "productsInfo", "price": "399", "promotions": [],
+        "promotion_id": "free-shipping-registered-unregistered-inpost",
+        "fetched_at": "2026-11-12T12:00:00+01:00",
+        "price_details": {"SalesPrice": 399, "StandardPrice": 399}}}
+    if flag is not None:
+        product["online"]["price_details"]["onPromotion"] = flag
+    verify_offers([offer], {"80370095": product}, "2026-11-12T12:00:00+01:00")
+    assert offer.verification["status"] == "price_match"
+    assert offer.verification["online_on_promotion"] is (flag if isinstance(flag, bool) else None)
+    if isinstance(flag, bool):
+        assert f"onPromotion={str(flag).lower()}" in offer.verification["details"]
+    else:
+        assert "onPromotion=" not in offer.verification["details"]
+    assert offer.promotion == "Cena z gazetki: 399,00 zł"
+    assert not offer.warnings
+
+
+def test_online_false_flag_does_not_remove_an_explicit_flyer_bundle():
+    promotion = "Drugi produkt -60% (w tej samej cenie lub tańszy)."
+    offer = Offer("printed", "123", promotion, 1, "2026-11-05", "2026-11-22",
+                  evidence={"match_method": "campaign_panel", "printed_condition": promotion})
+    product = {"name": "Alfa", "online": {"source": "productsInfo", "price": "24.99",
+        "fetched_at": "2026-11-12T12:00:00+01:00", "price_details": {"onPromotion": False},
+        "promotions": [{"text": "1+1 -60%"}]}}
+    verify_offers([offer], {"123": product}, "2026-11-12T12:00:00+01:00")
+    assert offer.promotion == promotion
+    assert offer.verification["status"] == "campaign_match"
+    assert offer.verification["online_on_promotion"] is False
+    assert not offer.warnings
+
+
+@pytest.mark.parametrize("flag,label", [(False, "Nie"), (True, "Tak"), (None, "Brak danych")])
+def test_compact_excel_keeps_review_warning_and_online_flag(tmp_path, flag, label):
+    from openpyxl import load_workbook
+    offer = Offer("05.11.2026–22.11.2026", "83108078", "DO SPRAWDZENIA", 17,
+        warnings=["Konflikt tożsamości"], product="La Mania Home Bauhaus II",
+        evidence={"nearby_caption_unverified": "Lari Stripes Black",
+            "date": {"page": 17, "legal_notes": [{"text": "* Promocja obowiązuje 05-22.11.2026."}],
+                     "related_notes": [{"kind": "exclusion", "text": "Nie łączy się z kodami."}]}},
+        verification={"label": "Nie potwierdzono produktu przy ofercie",
+                      "online_on_promotion": flag})
+    output = tmp_path / "merged.xlsx"
+    write_excel([offer], output, "https://www.hebe.pl/gazetka-hebe")
+    wb = load_workbook(output)
+    assert wb.sheetnames == ["Promocje"]
+    ws = wb.active
+    assert ws["G2"].value == label
+    assert "Konflikt tożsamości" in ws["D2"].value
+    assert ws.max_column == 8
+    assert [cell.value for cell in ws[1]][-1] == "Strona gazetki"
+    assert all(cell.fill.fgColor.rgb == "00FFF2CC" for cell in ws[2])

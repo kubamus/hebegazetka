@@ -39,10 +39,16 @@ def verify_offers(offers, products: dict, fetched_at: str):
         source_label = "API productsInfo" if source == "productsInfo" else source
         checked_at = snapshot.get("fetched_at", fetched_at)
         badges = snapshot.get("promotions", [])
+        # This flag describes the dated online snapshot, not the printed offer.
+        # Missing flags (including QuickView archives) are unknown, never false.
+        on_promotion = snapshot.get("price_details", {}).get("onPromotion")
+        if not isinstance(on_promotion, bool):
+            on_promotion = None
         verification = {"checked_at": checked_at, "online_source":source,
                         "online_url":snapshot.get("url"),"online_price":snapshot.get("price"),
                         "online_promotions":badges,"online_promotion_id":snapshot.get("promotion_id"),
-                        "online_pricing_text":snapshot.get("pricing_text", "")}
+                        "online_pricing_text":snapshot.get("pricing_text", ""),
+                        "online_on_promotion":on_promotion}
         if source == "QuickView":
             verification.update(quickview_url=snapshot.get("url"),quickview_price=snapshot.get("price"),
                 quickview_promotions=badges,quickview_promotion_id=snapshot.get("promotion_id"),
@@ -79,6 +85,11 @@ def verify_offers(offers, products: dict, fetched_at: str):
                     status, details = "online_difference", "Bieżące dane online pokazują inną promocję lub nie zawierają etykiety tej kampanii. Zachowano warunki i daty z gazetki. Sam brak zgodności online nie oznacza błędu przypisania."
                 else:
                     details = "QuickView nie zawiera ceny ani odczytywalnej etykiety tej promocji."
+        if on_promotion is not None:
+            flag = "true" if on_promotion else "false"
+            details += (f"\n{source_label}: onPromotion={flag} w chwili pobrania danych. "
+                        "Zgodność ceny ani obecność w gazetce nie potwierdza obniżki. "
+                        "Ta flaga dotyczy oferty online; osobne warunki z gazetki pozostają zachowane.")
         label = STATUS_LABELS[status].replace("QuickView",source_label)
         # Only a problem with the flyer extraction needs human correction.
         # A live online difference (or unavailable online comparison) is an
