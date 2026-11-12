@@ -211,12 +211,12 @@ def test_excel_merges_verification_without_losing_literal_badges_or_source_links
     assert workbook.sheetnames == ["Promocje"]
     ws = workbook["Promocje"]
     assert ws["B2"].value == "123" and ws["B2"].data_type == "s"
-    assert ws["F2"].hyperlink.target.endswith("pid=123")
-    assert "=untrusted label" in ws["F2"].value and ws["F2"].data_type == "s"
-    assert ws["E2"].value == "Cena zgodna z QuickView"
-    assert ws["H2"].value == "1"
-    assert ws.max_column == 8
-    assert ws.freeze_panes == "C2" and ws.tables["PromocjeHebe"].ref == "A1:H2"
+    assert ws["G2"].hyperlink.target.endswith("pid=123")
+    assert "=untrusted label" in ws["G2"].value and ws["G2"].data_type == "s"
+    assert ws["F2"].value == "Cena zgodna z QuickView"
+    assert ws["I2"].value == "1"
+    assert ws.max_column == 9
+    assert ws.freeze_panes == "C2" and ws.tables["PromocjeHebe"].ref == "A1:I2"
 
 
 
@@ -293,8 +293,8 @@ def test_compact_excel_keeps_review_warning_and_online_flag(tmp_path, flag, labe
     wb = load_workbook(output)
     assert wb.sheetnames == ["Promocje"]
     ws = wb.active
-    assert ws["G2"].value == label
-    assert "Konflikt tożsamości" in ws["D2"].value
-    assert ws.max_column == 8
+    assert ws["H2"].value == label
+    assert "Konflikt tożsamości" in ws["E2"].value
+    assert ws.max_column == 9
     assert [cell.value for cell in ws[1]][-1] == "Strona gazetki"
     assert all(cell.fill.fgColor.rgb == "00FFF2CC" for cell in ws[2])

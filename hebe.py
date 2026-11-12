@@ -26,7 +26,11 @@ from legal_footnotes import extract_legal_notes, markers, split_legal_text
 from products_api import fetch_products_info
 
 LOG = logging.getLogger("hebe")
-HOME = "https://www.hebe.pl/gazetka-hebe?magazine=digital"
+MAGAZINES = {
+    "digital": "https://www.hebe.pl/gazetka-hebe?magazine=digital",
+    "plachta": "https://www.hebe.pl/gazetka-hebe?magazine=plachta",
+}
+HOME = MAGAZINES["digital"]
 DATE_RE = re.compile(r"(?<!\d)(\d{1,2})(?:\.(\d{1,2})(?:\.(\d{4}|\d{2}))?)?\s*[-–—]\s*(\d{1,2})\.(\d{1,2})(?:\.(\d{4}|\d{2}))?(?!\d)")
 
 
@@ -210,6 +214,41 @@ def minimum_assignment(costs):
     return [(p[j]-1,j-1) for j in range(1,m+1) if p[j]]
 
 
+def text_campaign_sections(page, notes):
+    """Infer full-width campaign bands only when a heading agrees with its footer.
+
+    Some flyers paint the entire page as one image, so vector rectangles do
+    not describe its panels. Repeated legal footers delimit these bands;
+    matching a second-product heading and its exact legal discount is required.
+    """
+    footers = [note for note in notes if note["kind"] == "validity"
+               and note["box"][0] < page.rect.width * .12
+               and note["box"][2] - note["box"][0] > page.rect.width * .25]
+    footers.sort(key=lambda note: note["box"][3])
+    # Separate clauses at the same height do not establish full-width bands.
+    if any(abs(a["box"][3] - b["box"][3]) < 3 for a, b in zip(footers, footers[1:])):
+        return []
+    headings = [Text(clean(b[4]), tuple(b[:4])) for b in page.get_text("blocks")
+                if re.search(r"DRUGI PRODUKT", clean(b[4]), re.I)
+                and re.search(r"-\d{1,2}\s*%", clean(b[4]))]
+    bands = []
+    top = 0
+    corroborated = False
+    for note in footers:
+        bottom = min(page.rect.height, note["box"][3] + 1)
+        rect = pymupdf.Rect(0, top, page.rect.width, bottom)
+        discount = re.search(r"Produkt w tej samej cenie lub tańszy kupisz\s+(\d{1,2})%\s+taniej",
+                             note["text"], re.I)
+        if discount:
+            if not any(rect.contains(pymupdf.Point(h.x, h.y))
+                       and re.search(r"-" + discount[1] + r"\s*%", h.text) for h in headings):
+                return []
+            corroborated = True
+        bands.append(rect)
+        top = bottom
+    return bands if corroborated else []
+
+
 class PageParser:
     def __init__(self, page, year: int):
         self.page = page
@@ -219,6 +258,7 @@ class PageParser:
         self.conditions = paragraphs(self.lines,r"^Kup (?:produkt|dwa|balsam|pastę)")
         self.validity = paragraphs(self.lines,r"\*+\s*Promocja obowiązuje")
         self.legal_notes = extract_legal_notes(page, year, parse_period)
+        self.text_sections = text_campaign_sections(page, self.legal_notes)
         self.captions = caption_groups(self.lines)
         self.headers = [t for t in self.lines if DATE_RE.fullmatch(t.text.strip(" *"))
                         and parse_period(t.text, year) and t.size >= 10]
@@ -351,7 +391,15 @@ class PageParser:
                 candidates.append(r)
         # Broadest panel below the full page avoids image clipping rectangles.
         candidates = [r for r in candidates if r.get_area() < self.width * self.height * .94]
-        return max(candidates, key=lambda r: r.get_area()) if candidates else self.page.rect
+        text_section = next((rect for rect in getattr(self, "text_sections", [])
+                             if rect.contains(pymupdf.Point(x, y))), None)
+        # A decorative footer rectangle may overlap product icons. It cannot
+        # overrule a campaign band corroborated by its heading and legal note.
+        if text_section is not None:
+            candidates = [rect for rect in candidates if text_section.contains(rect)]
+        if candidates:
+            return max(candidates, key=lambda r: r.get_area())
+        return text_section if text_section is not None else self.page.rect
 
     def period(self, point, caption: Text | None, default):
         return self.period_resolution(point,caption,default)["period"]
@@ -455,6 +503,15 @@ class PageParser:
                 if result:
                     return result
 
+        # A page can print one common legal footer without repeating its star
+        # beside each item (e.g. the fragrance page of the large-format flyer).
+        # Do not fall back to the catalogue-wide dates in that case.
+        page_notes = [note for note in self._legal_notes() if note["kind"] == "validity"]
+        if not self.headers and len(page_notes) == 1 and page_notes[0]["box"][1] >= self.height * .90:
+            result = resolve({page_notes[0]["marker"]}, "page_footnote", True)
+            if result:
+                return result
+
         section = self.section(point)
         px, py = point[0] * self.width, point[1] * self.height
         headers = self.headers
@@ -541,6 +598,8 @@ class PageParser:
                 text = clean(b[4])
                 if "DRUGI PRODUKT" in text and re.search(r"-\d+\s*%", text):
                     labels.append(Text(text, tuple(b[:4])))
+            labels = [label for label in labels
+                      if section.contains(pymupdf.Point(label.x, label.y))]
             if labels:
                 nearest = min(labels, key=lambda t: abs(t.x-px)/self.width + abs(t.y-py)/self.height)
                 # Require the same panel when the page has multiple campaigns.
@@ -551,7 +610,7 @@ class PageParser:
                     if local_brands and not any(brand_matches(b.text,brand) for b in local_brands):
                         return None
                     percent = re.search(r"-\d+\s*%", nearest.text)[0].replace(" ", "")
-                    mix = " Miksuj w ramach marki." if any("MIKSUJ W RAMACH MARKI" in t.text for t in self.lines) else ""
+                    mix = " Miksuj w ramach marki." if any("MIKSUJ W RAMACH MARKI" in t.text and section.contains(pymupdf.Point(t.x,t.y)) for t in self.lines) else ""
                     return f"Drugi produkt {percent} (w tej samej cenie lub tańszy).{mix}"
         return None
 
@@ -717,15 +776,16 @@ def write_excel(offers: list[Offer], output: Path, source: str):
     wb = Workbook()
     ws = wb.active
     ws.title = "Promocje"
-    ws.append(["Produkt", "ID", "Data obowiązywania", "Promocja",
+    ws.append(["Produkt", "ID", "Link produktu", "Data obowiązywania", "Promocja",
                "Porównanie oferty online", "Bieżąca oferta online", "Promocja cenowa online",
                "Strona gazetki"])
-    widths = {"A":65, "B":15, "C":29, "D":100, "E":39, "F":36,
-              "G":24, "H":12}
+    widths = {"A":65, "B":15, "C":60, "D":29, "E":100, "F":39,
+              "G":36, "H":24, "I":12}
     for i, offer in enumerate(offers, 2):
         product_label = offer.product or "ID " + offer.id
         if offer.product_description:
-            product_label += " — " + offer.product_description
+            product_label += " - " + offer.product_description
+        product_label = product_label.replace("—", "-").replace("–", "-")
         verification = offer.verification
         live = []
         if verification.get("online_price") is not None:
@@ -734,7 +794,7 @@ def write_excel(offers: list[Offer], output: Path, source: str):
                     if b.get("text") or b.get("callout"))
         on_promotion = verification.get("online_on_promotion")
         flag_label = "Tak" if on_promotion is True else "Nie" if on_promotion is False else "Brak danych"
-        ws.append([product_label, offer.id, offer.period, offer.promotion,
+        ws.append([product_label, offer.id, offer.product_url, offer.period, offer.promotion,
                    verification.get("label", "Brak danych"), "; ".join(live) or "Brak danych",
                    flag_label, str(offer.page)])
         for cell in ws[i]:
@@ -745,14 +805,14 @@ def write_excel(offers: list[Offer], output: Path, source: str):
             if offer.warnings:
                 cell.fill = PatternFill("solid", fgColor="FFF2CC")
         ws.cell(i, 2).number_format = "@"
-        for col in (3, 7, 8):
+        for col in (4, 8, 9):
             ws.cell(i, col).alignment = Alignment(horizontal="center", vertical="top", wrap_text=True)
         if offer.product_url:
-            ws.cell(i, 1).hyperlink = offer.product_url
+            ws.cell(i, 3).hyperlink = offer.product_url
         if verification.get("online_url"):
-            ws.cell(i, 6).hyperlink = verification["online_url"]
+            ws.cell(i, 7).hyperlink = verification["online_url"]
         if offer.warnings:
-            ws.cell(i, 4).value += "\nDO SPRAWDZENIA: " + "; ".join(offer.warnings) + f" (strona {offer.page})"
+            ws.cell(i, 5).value += "\nDO SPRAWDZENIA: " + "; ".join(offer.warnings) + f" (strona {offer.page})"
         row_lines = 1
         for cell in ws[i]:
             wrap_width = max(1, int(widths[cell.column_letter] * .85))
@@ -761,7 +821,7 @@ def write_excel(offers: list[Offer], output: Path, source: str):
             row_lines = max(row_lines, line_count)
         ws.row_dimensions[i].height = max(36, 15 * row_lines)
     if offers:
-        table = Table(displayName="PromocjeHebe", ref=f"A1:H{len(offers)+1}")
+        table = Table(displayName="PromocjeHebe", ref=f"A1:I{len(offers)+1}")
         table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
         ws.add_table(table)
     for cell in ws[1]:
@@ -780,20 +840,7 @@ def write_excel(offers: list[Offer], output: Path, source: str):
     temporary.replace(output)
 
 
-async def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--url", default=HOME, help="Strona gazetki Hebe lub bezpośredni adres iPaper")
-    ap.add_argument("--output", type=Path, help="Docelowy plik .xlsx (domyślnie outputs/<czas>/hebe.xlsx)")
-    ap.add_argument("--headless", action="store_true", help="Ukryj przeglądarkę (Hebe może zablokować ten tryb)")
-    ap.add_argument("--browser-channel", default="chrome", choices=["chrome", "chromium"], help="Przeglądarka (domyślnie zainstalowany Chrome)")
-    ap.add_argument("--replay", type=Path, help="Ponownie przetwórz zachowane dane z katalogu uruchomienia")
-    ap.add_argument("--json-only", action="store_true", help="Pomiń eksport Excel, zachowaj dane JSON")
-    ap.add_argument("--skip-names", action="store_true", help="Ukryj nazwy; dane produktu są nadal pobierane do weryfikacji ofert")
-    ap.add_argument("--strict", action="store_true", help="Zwróć kod 2, jeśli dowolny wiersz wymaga sprawdzenia")
-    args = ap.parse_args(argv)
-    output = args.output or Path("outputs") / datetime.now().strftime("%Y%m%d-%H%M%S-%f") / "hebe.xlsx"
-    if output.suffix.lower() != ".xlsx":
-        ap.error("--output musi kończyć się na .xlsx")
+async def process_flyer(args, output: Path):
     work = output.parent / (output.stem + "-dane")
     work.mkdir(parents=True, exist_ok=True)
     if args.replay:
@@ -824,6 +871,50 @@ async def main(argv=None):
     LOG.info("Źródła dat: %s",report["date_sources"])
     LOG.info("Wiersze do sprawdzenia: %d. Dane źródłowe: %s", warnings, work.resolve())
     return 2 if warnings and args.strict else 0
+
+
+def selected_runs(args, output: Path):
+    """Keep each edition's workbook and source archive separate."""
+    if args.replay or args.url:
+        return [(args.url or HOME, output)]
+    magazine = args.magazine or "digital"
+    if magazine != "both":
+        return [(MAGAZINES[magazine], output)]
+    return [(url, output.with_name(f"{output.stem}-{kind}{output.suffix}"))
+            for kind, url in MAGAZINES.items()]
+
+
+async def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__)
+    source = ap.add_mutually_exclusive_group()
+    source.add_argument("--magazine", choices=["digital", "plachta", "both"],
+                        help="Rodzaj gazetki: digital (domyślnie), plachta lub both (obie)")
+    source.add_argument("--url", help="Własna strona gazetki Hebe lub bezpośredni adres iPaper")
+    source.add_argument("--replay", type=Path, help="Ponownie przetwórz zachowane dane z katalogu uruchomienia")
+    ap.add_argument("--output", type=Path, help="Docelowy plik .xlsx; dla obu gazetek dodaje -digital i -plachta do nazwy")
+    ap.add_argument("--headless", action="store_true", help="Ukryj przeglądarkę (Hebe może zablokować ten tryb)")
+    ap.add_argument("--browser-channel", default="chrome", choices=["chrome", "chromium"], help="Przeglądarka (domyślnie zainstalowany Chrome)")
+    ap.add_argument("--json-only", action="store_true", help="Pomiń eksport Excel, zachowaj dane JSON")
+    ap.add_argument("--skip-names", action="store_true", help="Ukryj nazwy; dane produktu są nadal pobierane do weryfikacji ofert")
+    ap.add_argument("--strict", action="store_true", help="Zwróć kod 2, jeśli dowolny wiersz wymaga sprawdzenia")
+    args = ap.parse_args(argv)
+    output = args.output or Path("outputs") / datetime.now().strftime("%Y%m%d-%H%M%S-%f") / "hebe.xlsx"
+    if output.suffix.lower() != ".xlsx":
+        ap.error("--output musi kończyć się na .xlsx")
+    runs = selected_runs(args, output)
+    results = []
+    failed = False
+    for url, target in runs:
+        run_args = argparse.Namespace(**(vars(args) | {"url": url}))
+        try:
+            results.append(await process_flyer(run_args, target))
+        except (RuntimeError, ValueError, OSError, PlaywrightError) as exc:
+            if len(runs) == 1:
+                raise
+            failed = True
+            LOG.error("Nie przetworzono gazetki %s: %s", url, exc)
+    # A failed edition outranks review warnings, even if the other export succeeded.
+    return 1 if failed else max(results, default=0)
 
 
 if __name__ == "__main__":

@@ -102,3 +102,13 @@ def test_unreadable_legal_date_is_reported_instead_of_using_header():
     p = parser(note("*Promocja obowiązuje w dniach 31-32.11.2026."))
     result = p.period_resolution((.3,.4),Text("ALFA Krem*",(20,200,100,250)),None)
     assert result["period"] is None and result["warnings"]
+
+
+def test_single_common_page_footer_without_repeated_stars_overrides_catalogue_dates():
+    p = parser(note("*Promocja obowiązuje w dniach 16.11-20.12.2026.", (20, 755, 280, 770)))
+    p.headers = []
+    result = p.period_resolution((.4, .5), Text("ALFA Perfumy", (30, 400, 150, 430)),
+                                 ("2026-11-12", "2026-11-22"))
+    assert result["period"] == ("2026-11-16", "2026-12-20")
+    assert result["source"] == "page_footnote"
+    assert result["legal_notes"][0]["marker"] == "*"
